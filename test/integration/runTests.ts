@@ -31,7 +31,9 @@ async function main(): Promise<void> {
     console.error("Integration tests failed", err);
     process.exitCode = 1;
   } finally {
-    fs.rmSync(tmp, { recursive: true, force: true });
+    // SW_KEEP_TEST_DATA=1 keeps the workspace and logs (user-data/logs) for inspection.
+    if (process.env["SW_KEEP_TEST_DATA"]) console.log(`Test data kept in ${tmp}`);
+    else fs.rmSync(tmp, { recursive: true, force: true });
   }
 }
 
