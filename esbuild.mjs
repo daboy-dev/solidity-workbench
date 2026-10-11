@@ -37,6 +37,7 @@ if (withTests) {
       runTests: "test/integration/runTests.ts",
       "suite/index": "test/integration/suite/index.ts",
       "suite/autoImport.test": "test/integration/suite/autoImport.test.ts",
+      "suite/extras.test": "test/integration/suite/extras.test.ts",
     },
     outdir: "out/integration",
   });

@@ -44,6 +44,11 @@
   "contributes": {
     "commands": [
       {
+        "command": "solidityWorkbench.addImport",
+        "title": "Add Solidity Import",
+        "category": "Solidity Workbench"
+      },
+      {
         "command": "solidityWorkbench.rebuildIndex",
         "title": "Rebuild Symbol Index",
         "category": "Solidity Workbench"
@@ -125,7 +130,15 @@
           }
         }
       }
-    ]
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "solidityWorkbench.addImport",
+          "when": "config.solidityWorkbench.autoImport.enabled && (editorLangId == solidity || resourceExtname == .sol)"
+        }
+      ]
+    }
   },
   "scripts": {
     "build": "node esbuild.mjs",

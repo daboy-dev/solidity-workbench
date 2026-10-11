@@ -174,6 +174,7 @@ suite("Auto import", () => {
       assert.equal((await completions(doc, endOf(doc, "Ownab"))).length, 0);
     } finally {
       await config.update("autoImport.enabled", undefined, vscode.ConfigurationTarget.Workspace);
+      await waitFor(() => api.isFeatureActive("autoImport"));
     }
   });
 });
