@@ -2,7 +2,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { DEFAULT_FOUNDRY_CONFIG, parseFoundryConfig, type FoundryConfig } from "./foundryConfig";
 import { loadRemappings, type RemappingOrigin, type RemappingSourceOptions } from "./remappingSource";
-import { resolveImport, toImportPath, toSourceUnitName, type ImportPathResult, type Remapping } from "./remappings";
+import { resolveImport, toImportPath, toPosix, toSourceUnitName, type ImportPathResult, type Remapping } from "./remappings";
 
 export const FOUNDRY_TOML = "foundry.toml";
 
@@ -52,31 +52,48 @@ export class ProjectModel {
 export type ProjectArea = "src" | "test" | "script" | "lib" | "other";
 
 /**
- * Finds the nearest ancestor directory of `fromPath` that contains a
- * foundry.toml, never going above `ceiling`.
+ * Finds the Foundry project a file belongs to: the nearest ancestor with a
+ * foundry.toml, never going above `ceiling`. A foundry.toml that lives inside
+ * an enclosing project's library directory (e.g. lib/openzeppelin-contracts)
+ * belongs to a dependency, so the enclosing project wins.
  */
 export async function findProjectRoot(fromPath: string, ceiling: string): Promise<string | undefined> {
+  const found: string[] = []; // innermost first
   let dir = path.dirname(fromPath);
   const stop = path.resolve(ceiling);
   for (;;) {
-    if (await exists(path.join(dir, FOUNDRY_TOML))) return dir;
-    if (path.resolve(dir) === stop) return undefined;
+    if (await exists(path.join(dir, FOUNDRY_TOML))) found.push(dir);
+    if (path.resolve(dir) === stop) break;
     const parent = path.dirname(dir);
-    if (parent === dir) return undefined;
+    if (parent === dir) break;
     dir = parent;
+  }
+  if (found.length === 0) return undefined;
+
+  found.reverse();
+  let current = found[0]!;
+  for (const inner of found.slice(1)) {
+    const libs = (await readConfig(current)).libs;
+    const rel = toPosix(path.relative(current, inner));
+    const isDependency = libs.some((l) => rel === l || rel.startsWith(`${l}/`)) || rel.split("/").includes("node_modules");
+    if (isDependency) break;
+    current = inner;
+  }
+  return current;
+}
+
+async function readConfig(root: string): Promise<FoundryConfig> {
+  try {
+    return parseFoundryConfig(await fs.readFile(path.join(root, FOUNDRY_TOML), "utf8"), process.env["FOUNDRY_PROFILE"] || "default");
+  } catch {
+    return DEFAULT_FOUNDRY_CONFIG;
   }
 }
 
 export async function loadProject(root: string, options: RemappingSourceOptions = {}): Promise<ProjectModel> {
-  let config = DEFAULT_FOUNDRY_CONFIG;
-  let hasFoundryToml = false;
-  try {
-    const text = await fs.readFile(path.join(root, FOUNDRY_TOML), "utf8");
-    config = parseFoundryConfig(text, process.env["FOUNDRY_PROFILE"] || "default");
-    hasFoundryToml = true;
-  } catch {
-    // Not a Foundry project: defaults still give sensible src/test/lib layout.
-  }
+  // Without a foundry.toml the defaults still give a sensible src/test/lib layout.
+  const hasFoundryToml = await exists(path.join(root, FOUNDRY_TOML));
+  const config = hasFoundryToml ? await readConfig(root) : DEFAULT_FOUNDRY_CONFIG;
   const loaded = await loadRemappings(root, config, options);
   return new ProjectModel(root, config, loaded.remappings, loaded.origin, hasFoundryToml);
 }

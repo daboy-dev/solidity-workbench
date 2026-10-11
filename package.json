@@ -21,17 +21,6 @@
     "ethereum"
   ],
   "main": "./dist/extension.js",
-  "scripts": {
-    "build": "node esbuild.mjs",
-    "build:prod": "node esbuild.mjs --production",
-    "watch": "node esbuild.mjs --watch",
-    "typecheck": "tsc -p .",
-    "test": "npm run test:unit && npm run test:integration",
-    "test:unit": "vitest run",
-    "test:integration": "node esbuild.mjs --tests && node out/integration/runTests.js",
-    "vscode:prepublish": "npm run typecheck && npm run build:prod",
-    "package": "vsce package --no-dependencies"
-  },
   "devDependencies": {
     "@solidity-parser/parser": "^0.20.2",
     "@types/mocha": "^10.0.10",
@@ -46,5 +35,107 @@
     "smol-toml": "^1.9.1",
     "typescript": "^7.0.2",
     "vitest": "^5.0.3"
+  },
+  "activationEvents": [
+    "onLanguage:solidity",
+    "workspaceContains:**/foundry.toml",
+    "workspaceContains:**/*.sol"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "solidityWorkbench.rebuildIndex",
+        "title": "Rebuild Symbol Index",
+        "category": "Solidity Workbench"
+      },
+      {
+        "command": "solidityWorkbench.showLog",
+        "title": "Show Log",
+        "category": "Solidity Workbench"
+      }
+    ],
+    "configuration": [
+      {
+        "title": "General",
+        "order": 0,
+        "properties": {
+          "solidityWorkbench.foundry.forgePath": {
+            "type": "string",
+            "default": "forge",
+            "scope": "machine-overridable",
+            "markdownDescription": "Path to the `forge` executable used to run `forge remappings`. When it cannot be run, remappings are read from `remappings.txt`, `foundry.toml` and the library folders."
+          }
+        }
+      },
+      {
+        "title": "Index",
+        "order": 1,
+        "properties": {
+          "solidityWorkbench.index.includeTests": {
+            "type": "boolean",
+            "default": true,
+            "scope": "resource",
+            "markdownDescription": "Index the project test directory (`test` in `foundry.toml`)."
+          },
+          "solidityWorkbench.index.includeScripts": {
+            "type": "boolean",
+            "default": true,
+            "scope": "resource",
+            "markdownDescription": "Index the project script directory (`script` in `foundry.toml`)."
+          },
+          "solidityWorkbench.index.excludeLibTestsAndMocks": {
+            "type": "boolean",
+            "default": true,
+            "scope": "resource",
+            "markdownDescription": "Skip `test`, `tests`, `mock` and `mocks` folders inside library directories (`lib/`)."
+          },
+          "solidityWorkbench.index.exclude": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [],
+            "scope": "resource",
+            "markdownDescription": "Glob patterns, relative to the project root, of Solidity files to leave out of the index. Example: `lib/**/certora/**`."
+          }
+        }
+      },
+      {
+        "title": "Auto Import",
+        "order": 2,
+        "properties": {
+          "solidityWorkbench.autoImport.enabled": {
+            "type": "boolean",
+            "default": true,
+            "markdownDescription": "Suggest symbols from the project and its dependencies in completions and add the import automatically."
+          },
+          "solidityWorkbench.autoImport.pathStyle": {
+            "type": "string",
+            "enum": [
+              "remapped",
+              "relative"
+            ],
+            "enumDescriptions": [
+              "Use the remapped path (e.g. `@openzeppelin/contracts/access/Ownable.sol`) when a remapping covers the file, else a relative path.",
+              "Always use a path relative to the importing file."
+            ],
+            "default": "remapped",
+            "scope": "resource",
+            "markdownDescription": "Style of the paths written in new imports."
+          }
+        }
+      }
+    ]
+  },
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "build:prod": "node esbuild.mjs --production",
+    "watch": "node esbuild.mjs --watch",
+    "typecheck": "tsc -p .",
+    "test": "npm run test:unit && npm run test:integration",
+    "test:unit": "vitest run",
+    "test:integration": "node esbuild.mjs --tests && node out/integration/runTests.js",
+    "vscode:prepublish": "npm run typecheck && npm run build:prod",
+    "package": "vsce package --no-dependencies"
   }
 }

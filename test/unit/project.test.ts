@@ -76,3 +76,25 @@ describe("ProjectModel", () => {
     expect(project.areaOf(path.join(FIXTURE, "test/Vault.t.sol"))).toBe("test");
   });
 });
+
+describe("findProjectRoot", () => {
+  it("does not treat a library's own foundry.toml as a separate project", async () => {
+    const fs = await import("node:fs/promises");
+    const os = await import("node:os");
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "sw-root-"));
+    try {
+      await fs.mkdir(path.join(tmp, "app/lib/dep/src"), { recursive: true });
+      await fs.mkdir(path.join(tmp, "app/packages/core/src"), { recursive: true });
+      await fs.writeFile(path.join(tmp, "app/foundry.toml"), "[profile.default]\n");
+      await fs.writeFile(path.join(tmp, "app/lib/dep/foundry.toml"), "[profile.default]\n");
+      await fs.writeFile(path.join(tmp, "app/packages/core/foundry.toml"), "[profile.default]\n");
+      const app = path.join(tmp, "app");
+      expect(await findProjectRoot(path.join(app, "lib/dep/src/A.sol"), tmp)).toBe(app);
+      // A nested project that is not a dependency (monorepo) is its own project.
+      expect(await findProjectRoot(path.join(app, "packages/core/src/A.sol"), tmp)).toBe(path.join(app, "packages/core"));
+      expect(await findProjectRoot(path.join(tmp, "Loose.sol"), tmp)).toBeUndefined();
+    } finally {
+      await fs.rm(tmp, { recursive: true, force: true });
+    }
+  });
+});

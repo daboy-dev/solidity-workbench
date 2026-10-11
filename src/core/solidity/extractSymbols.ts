@@ -123,7 +123,8 @@ export function extractSymbolsWithRegex(text: string): SymbolDeclaration[] {
   return out;
 }
 
-function braceDepths(text: string): (offset: number) => number {
+/** Returns a lookup of the `{}` nesting depth at any offset. */
+export function braceDepths(text: string): (offset: number) => number {
   // Record depth changes so lookups are O(log n).
   const positions: number[] = [];
   const depths: number[] = [];

@@ -44,7 +44,7 @@ export class ProjectIndexer {
     private readonly options: IndexerOptions,
   ) {
     this.isIncluded = createFileFilter(project, scope);
-    this.batchSize = options.batchSize ?? 64;
+    this.batchSize = options.batchSize ?? 32;
   }
 
   /** True when the file would be indexed under the current project and scope. */
@@ -70,14 +70,22 @@ export class ProjectIndexer {
       }
     }
 
+    // Feed the parser with as many batches as it can handle at once; results are
+    // applied as they arrive, so the index fills up progressively.
     let regexFallbacks = 0;
-    for (let i = 0; i < toParse.length && !token?.isCancellationRequested && !this.disposed; i += this.batchSize) {
-      const batch = toParse.slice(i, i + this.batchSize);
-      const results = await this.options.parser.parse(batch.map((f) => f.path));
-      results.forEach((r, j) => {
-        if (this.applyParsed(r, batch[j]!) && r.method !== "parser") regexFallbacks++;
-      });
-    }
+    let next = 0;
+    const lane = async (): Promise<void> => {
+      while (next < toParse.length && !token?.isCancellationRequested && !this.disposed) {
+        const batch = toParse.slice(next, next + this.batchSize);
+        next += batch.length;
+        const results = await this.options.parser.parse(batch.map((f) => f.path));
+        if (this.disposed) return;
+        results.forEach((r, j) => {
+          if (this.applyParsed(r, batch[j]!) && r.method !== "parser") regexFallbacks++;
+        });
+      }
+    };
+    await Promise.all(Array.from({ length: Math.max(1, this.options.parser.concurrency ?? 1) }, lane));
 
     if (toParse.length > 0 || fromCache !== cached.size) this.scheduleCacheSave(0);
     const stats: IndexStats = {

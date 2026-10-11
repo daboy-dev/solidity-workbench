@@ -124,7 +124,7 @@ export function toImportPath(
  * When a library also declares its own (e.g. `@openzeppelin/contracts/`), the
  * declared one is the canonical import path.
  */
-function looksInferred(r: Remapping): boolean {
+export function looksInferred(r: Remapping): boolean {
   const name = r.prefix.replace(/\/$/, "");
   return r.target.split("/").includes(name);
 }
