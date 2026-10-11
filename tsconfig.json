@@ -15,6 +15,6 @@
     "isolatedModules": true,
     "noEmit": true
   },
-  "include": ["src", "test", "esbuild.mjs", "vitest.config.ts"],
+  "include": ["src", "test", "esbuild.mjs", "vitest.config.mts"],
   "exclude": ["test/fixtures"]
 }
