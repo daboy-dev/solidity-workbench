@@ -34,7 +34,7 @@ contract Vault is Ownable
 
 ### Quick fix
 
-On an *undeclared identifier* diagnostic (solc errors 7576 and 7920, as reported by the Nomic Foundation or Juan Blanco extensions), the light bulb offers `Import X from "..."` for each matching file.
+On an *undeclared identifier* diagnostic (solc errors 7576 and 7920, whichever extension reports them), the light bulb offers `Import X from "..."` for each matching file.
 
 ### Add Solidity Import command
 
@@ -72,7 +72,7 @@ Requirements: VS Code 1.90 or newer. [Foundry](https://getfoundry.sh) is recomme
 
 ### Working alongside other Solidity extensions
 
-Solidity Workbench does not register a grammar, a formatter or a language server. It works next to the Nomic Foundation (Hardhat) and Juan Blanco Solidity extensions, and also without any of them: it handles every `*.sol` file whatever its language id.
+Solidity Workbench does not register a grammar or a language server, and works with or without other Solidity extensions installed: it handles every `*.sol` file whatever its language id. Features that another extension also provides may conflict with it (for example, duplicated suggestions or diagnostics); every feature can be turned off with its `solidityWorkbench.<feature>.enabled` setting.
 
 ## How it works
 
@@ -123,7 +123,7 @@ Each feature has its own `solidityWorkbench.<feature>.enabled` setting; the `ind
 - Without forge, remappings are inferred with forge's main rules; unusual setups may differ. Install forge, or add a `remappings.txt`, for exact results.
 - Projects without `foundry.toml` (e.g. Hardhat-only) are indexed with Foundry's default layout, so `contracts/` and `node_modules` are only covered when a remapping points at them.
 - The quick fix needs another extension that reports solc diagnostics; on its own, Solidity Workbench does not compile.
-- Other Solidity extensions that offer their own completions (the Nomic Foundation one has an auto-import of its own) can show a similar suggestion next to ours. Disable one of them if this is distracting.
+- Another Solidity extension with its own completions or auto-import may conflict with this one and show a similar suggestion next to ours. Disable the feature in one of them if this is distracting.
 - Without any Solidity extension, the workbench starts when the workspace contains a `.sol` file or a `foundry.toml`. A loose `.sol` file opened outside any workspace does not activate it.
 - Deleting a folder other than a library may leave its symbols in the index until the next reload or `Rebuild Symbol Index`, depending on how the file watcher reports the deletion on your platform.
 
