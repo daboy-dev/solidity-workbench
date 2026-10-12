@@ -7,7 +7,7 @@ import { ProjectIndexer } from "../core/index/projectIndexer";
 import type { SymbolIndex } from "../core/index/symbolIndex";
 import { findProjectRoot, loadProject, type ProjectModel } from "../core/project/projectModel";
 import { formatRemapping } from "../core/project/remappings";
-import { DocumentAnalysisService, type AnalyzedDocument } from "./documentAnalysis";
+import { DocumentAnalysisService, type AnalyzedDocument, type AnalyzedFile } from "./documentAnalysis";
 import type { Logger } from "./logger";
 import { affectsCore, readCoreSettings } from "./settings";
 
@@ -33,6 +33,8 @@ export interface WorkbenchCore {
   projectFor(uri: vscode.Uri): Promise<ProjectHandle | undefined>;
   /** Outline and syntax problems of an open document, computed off the main thread. */
   analyzeDocument(document: vscode.TextDocument): Promise<AnalyzedDocument>;
+  /** Same for a file as saved on disk (cached by modification time). */
+  analyzeFile(path: string): Promise<AnalyzedFile | undefined>;
   projects(): readonly ProjectHandle[];
 }
 
@@ -179,6 +181,10 @@ export class WorkbenchCoreImpl implements WorkbenchCore, vscode.Disposable {
 
   analyzeDocument(document: vscode.TextDocument): Promise<AnalyzedDocument> {
     return this.documents.analyze(document);
+  }
+
+  analyzeFile(path: string): Promise<AnalyzedFile | undefined> {
+    return this.documents.analyzeFile(path);
   }
 
   projects(): readonly ProjectHandle[] {

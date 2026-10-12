@@ -1,6 +1,6 @@
-import { execFile } from "node:child_process";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { runForge, type Env, type ExecFn } from "../foundry/forge";
 import { parseFoundryConfig, type FoundryConfig } from "./foundryConfig";
 import { mergeRemappings, parseRemapping, parseRemappingsText, toPosix, type Remapping } from "./remappings";
 
@@ -15,8 +15,6 @@ export interface LoadedRemappings {
   readonly forgeError?: string;
 }
 
-export type ExecFn = (command: string, args: readonly string[], cwd: string) => Promise<string>;
-
 export interface RemappingSourceOptions {
   /** Runs a command and resolves with stdout. Injected for tests. */
   readonly exec?: ExecFn;
@@ -25,36 +23,10 @@ export interface RemappingSourceOptions {
   /** Skip forge entirely (tests, or when the user disables it). */
   readonly useForge?: boolean;
   /** Environment used to locate forge (FOUNDRY_DIR, HOME). Injected for tests. */
-  readonly env?: Readonly<Record<string, string | undefined>>;
+  readonly env?: Env;
 }
 
-const FORGE_TIMEOUT_MS = 15_000;
 const MAX_LIB_DEPTH = 4;
-
-export const defaultExec: ExecFn = (command, args, cwd) =>
-  new Promise((resolve, reject) => {
-    execFile(command, [...args], { cwd, timeout: FORGE_TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024 }, (err, stdout) => {
-      if (err) reject(err);
-      else resolve(stdout);
-    });
-  });
-
-/**
- * Where to look for forge. foundryup installs it in ~/.foundry/bin and adds
- * that folder to the PATH of interactive shells only, so VS Code (especially
- * when started from the Dock) often does not see it on the PATH.
- */
-export function forgeCandidates(forgePath: string | undefined, env: Readonly<Record<string, string | undefined>> = process.env): string[] {
-  if (forgePath && forgePath !== "forge") return [forgePath];
-  const exe = process.platform === "win32" ? "forge.exe" : "forge";
-  const home = env["HOME"] ?? env["USERPROFILE"];
-  const dirs = [env["FOUNDRY_DIR"], home && path.join(home, ".foundry")].filter((d): d is string => !!d);
-  return [...new Set(["forge", ...dirs.map((d) => path.join(d, "bin", exe))])];
-}
-
-function isNotFound(err: unknown): boolean {
-  return typeof err === "object" && err !== null && (err as { code?: unknown }).code === "ENOENT";
-}
 
 /**
  * Loads remappings for a Foundry project: `forge remappings` when available,
@@ -68,16 +40,11 @@ export async function loadRemappings(
 ): Promise<LoadedRemappings> {
   let forgeError: string | undefined;
   if (options.useForge !== false) {
-    const exec = options.exec ?? defaultExec;
-    for (const forge of forgeCandidates(options.forgePath, options.env)) {
-      try {
-        const stdout = await exec(forge, ["remappings"], root);
-        return { remappings: parseRemappingsText(stdout).map((r) => relativizeTarget(root, r)), origin: "forge", forge };
-      } catch (err) {
-        forgeError = err instanceof Error ? err.message : String(err);
-        // forge exists but failed (e.g. invalid foundry.toml): the next candidate would fail too.
-        if (!isNotFound(err)) break;
-      }
+    try {
+      const { forge, stdout } = await runForge(["remappings"], root, options);
+      return { remappings: parseRemappingsText(stdout).map((r) => relativizeTarget(root, r)), origin: "forge", forge };
+    } catch (err) {
+      forgeError = err instanceof Error ? err.message : String(err);
     }
   }
   const project = mergeRemappings(config.remappings, parseRemappingsText(await readText(path.join(root, "remappings.txt"))));

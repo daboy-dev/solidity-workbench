@@ -2,7 +2,8 @@ import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 import { parseFoundryConfig } from "../../src/core/project/foundryConfig";
 import { findProjectRoot, loadProject } from "../../src/core/project/projectModel";
-import { forgeCandidates, loadRemappings } from "../../src/core/project/remappingSource";
+import { forgeCandidates } from "../../src/core/foundry/forge";
+import { loadRemappings } from "../../src/core/project/remappingSource";
 import { formatRemapping } from "../../src/core/project/remappings";
 
 const FIXTURE = path.resolve(__dirname, "../fixtures/foundry-project");

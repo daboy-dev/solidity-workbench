@@ -158,6 +158,28 @@
             "markdownDescription": "Provide the document outline (Outline view, breadcrumbs, Go to Symbol in Editor) for Solidity files."
           }
         }
+      },
+      {
+        "title": "Navigation",
+        "order": 5,
+        "properties": {
+          "solidityWorkbench.navigation.enabled": {
+            "type": "boolean",
+            "default": true,
+            "markdownDescription": "Go to Definition (including inherited members, aliases and `Library.member`), clickable import paths and Go to Symbol in Workspace. May conflict with navigation from other Solidity extensions."
+          }
+        }
+      },
+      {
+        "title": "Formatting",
+        "order": 6,
+        "properties": {
+          "solidityWorkbench.formatting.enabled": {
+            "type": "boolean",
+            "default": false,
+            "markdownDescription": "Format Solidity files with `forge fmt`, using the `[fmt]` section of `foundry.toml`. Off by default: enable it and pick Solidity Workbench as the formatter (`editor.defaultFormatter`) if you want Format Document or format on save to use it."
+          }
+        }
       }
     ],
     "menus": {

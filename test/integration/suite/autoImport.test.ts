@@ -85,12 +85,16 @@ suite("Auto import", () => {
       "nested copy should be offered as a separate suggestion",
     );
 
-    // Real UI flow: trigger suggest and accept the first (best-ranked) item.
+    // Real UI flow: trigger suggest and accept the first (best-ranked) item. The suggest widget
+    // opens asynchronously and accepting before it is visible does nothing, so retry until it works.
     editor.selection = new vscode.Selection(position, position);
-    await vscode.commands.executeCommand("editor.action.triggerSuggest");
-    await new Promise((r) => setTimeout(r, 1_500));
-    await vscode.commands.executeCommand("acceptSelectedSuggestion");
-    await waitFor(() => doc.getText().includes("import {Ownable}"));
+    const deadline = Date.now() + 10_000;
+    while (!doc.getText().includes("import {Ownable}") && Date.now() < deadline) {
+      await vscode.commands.executeCommand("editor.action.triggerSuggest");
+      await new Promise((r) => setTimeout(r, 500));
+      await vscode.commands.executeCommand("acceptSelectedSuggestion");
+      await new Promise((r) => setTimeout(r, 100));
+    }
 
     assert.equal(
       doc.getText(),

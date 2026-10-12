@@ -3,7 +3,8 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { parseFoundryConfig } from "../../src/core/project/foundryConfig";
-import { defaultExec, forgeCandidates, loadRemappings } from "../../src/core/project/remappingSource";
+import { defaultExec, forgeCandidates } from "../../src/core/foundry/forge";
+import { loadRemappings } from "../../src/core/project/remappingSource";
 import { formatRemapping } from "../../src/core/project/remappings";
 
 /**

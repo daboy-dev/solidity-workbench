@@ -31,6 +31,8 @@ export interface OutlineNode {
   readonly nameStart: number;
   readonly nameEnd: number;
   readonly children: readonly OutlineNode[];
+  /** Base contracts as written (`Ownable`, `Lib.Base`), for contracts, interfaces and libraries. */
+  readonly bases?: readonly string[];
 }
 
 interface Node {
@@ -50,6 +52,7 @@ interface Node {
   isDeclaredConst?: boolean;
   isImmutable?: boolean;
   identifier?: { range?: [number, number] } | null;
+  baseContracts?: Array<{ baseName?: { namePath?: string } }>;
 }
 
 /** Builds the outline from a (possibly partial) @solidity-parser/parser AST. */
@@ -75,7 +78,9 @@ function toOutline(text: string, node: Node, topLevel: boolean): OutlineNode[] |
     case "ContractDefinition": {
       const kind = (node.kind === "abstract" || node.kind === "interface" || node.kind === "library" ? node.kind : "contract") as OutlineKind;
       const members = (node.subNodes ?? []).flatMap((n) => toOutline(text, n, false) ?? []);
-      return [make(node.name ?? "", kind, node.kind === "abstract" ? "abstract contract" : (node.kind ?? "contract"), members)];
+      const bases = (node.baseContracts ?? []).map((b) => b.baseName?.namePath).filter((b): b is string => !!b);
+      const detail = node.kind === "abstract" ? "abstract contract" : (node.kind ?? "contract");
+      return [{ ...make(node.name ?? "", kind, detail, members), bases }];
     }
     case "StructDefinition":
       return [make(node.name ?? "", "struct", "struct", (node.members ?? []).flatMap((m) => variableNode(text, m) ?? []))];

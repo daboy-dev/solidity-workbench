@@ -2,6 +2,8 @@ import * as vscode from "vscode";
 import { WorkerFileParser } from "./core/index/fileParser";
 import { autoImportFeature } from "./features/autoImport";
 import type { Feature } from "./features/feature";
+import { formattingFeature } from "./features/formatting";
+import { navigationFeature } from "./features/navigation";
 import { outlineFeature } from "./features/outline";
 import { FeatureRegistry } from "./features/registry";
 import { syntaxDiagnosticsFeature } from "./features/syntaxDiagnostics";
@@ -9,7 +11,7 @@ import { createLogger } from "./host/logger";
 import { WorkbenchCoreImpl, type WorkbenchCore } from "./host/workbenchCore";
 
 /** Every feature of the workbench. New features are added here. */
-const FEATURES: readonly Feature[] = [autoImportFeature, syntaxDiagnosticsFeature, outlineFeature];
+const FEATURES: readonly Feature[] = [autoImportFeature, syntaxDiagnosticsFeature, outlineFeature, navigationFeature, formattingFeature];
 
 export interface WorkbenchApi {
   readonly core: WorkbenchCore;

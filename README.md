@@ -62,6 +62,27 @@ Analysis runs in a background thread. Type errors, unknown names and other compi
 
 The Outline view, breadcrumbs and *Go to Symbol in Editor* (`Ctrl+Shift+O` / `Cmd+Shift+O`) list contracts, interfaces and libraries with their functions, modifiers, events, errors, state variables, structs and enums, plus file-level declarations. The outline keeps working while the file has syntax errors.
 
+### Navigation
+
+- **Go to Definition** (`F12`, `Ctrl/Cmd+click`) on:
+  - names declared in the file or imported, following aliases (`import {A as B}`), plain imports (`import "x.sol"`) and re-exports across files;
+  - members of the current contract and of the contracts it inherits from, in any file (`onlyOwner`, `_msgSender`, inherited errors and events), with `super.` and `this.`;
+  - qualified names: `Math.max` (every overload), `Errors.Unauthorized`, `Types.Side.Long`, `Alias.Symbol` for `import * as Alias`.
+- **Import paths are links**: `Ctrl/Cmd+click` on `"@openzeppelin/contracts/access/Ownable.sol"` opens the file, resolved with the project's remappings.
+- **Go to Symbol in Workspace** (`Ctrl/Cmd+T`) searches the top-level symbols of every indexed project, dependencies included.
+
+Unsaved changes in open files are taken into account.
+
+### Formatting (optional)
+
+Formats with `forge fmt`, so the `[fmt]` section of your `foundry.toml` applies. It is **off by default**, since many people prefer to run `forge fmt` themselves. To use it, set `solidityWorkbench.formatting.enabled` to `true` and pick it as the formatter:
+
+```json
+"[solidity]": { "editor.defaultFormatter": "local.solidity-workbench" }
+```
+
+If the file has a syntax error, nothing is changed and the reason is shown in the status bar. forge prints partially formatted code in that case, and that output is never applied.
+
 ### Other commands
 
 - `Solidity Workbench: Rebuild Symbol Index`: discards the cache and re-indexes every project.
@@ -123,6 +144,8 @@ As a reference, a synthetic project with 5,651 files (13 copies of OpenZeppelin 
 | `solidityWorkbench.autoImport.pathStyle` | `"remapped"` | `remapped`: use a remapping when one covers the file, else a relative path. `relative`: always relative paths. |
 | `solidityWorkbench.syntaxDiagnostics.enabled` | `true` | Report syntax errors while typing. |
 | `solidityWorkbench.outline.enabled` | `true` | Provide the document outline. |
+| `solidityWorkbench.navigation.enabled` | `true` | Go to Definition, clickable import paths and Go to Symbol in Workspace. |
+| `solidityWorkbench.formatting.enabled` | `false` | Format with `forge fmt`. |
 | `solidityWorkbench.index.includeTests` | `true` | Index the project's test folder. |
 | `solidityWorkbench.index.includeScripts` | `true` | Index the project's script folder. |
 | `solidityWorkbench.index.excludeLibTestsAndMocks` | `true` | Skip `test`, `tests`, `mock` and `mocks` folders inside libraries. |
@@ -139,6 +162,8 @@ Each feature has its own `solidityWorkbench.<feature>.enabled` setting; the `ind
 - Without forge, remappings are inferred with forge's main rules; unusual setups may differ. Install forge, or add a `remappings.txt`, for exact results.
 - Projects without `foundry.toml` (e.g. Hardhat-only) are indexed with Foundry's default layout, so `contracts/` and `node_modules` are only covered when a remapping points at them.
 - The import quick fix needs another extension that reports solc diagnostics; on its own, Solidity Workbench does not compile yet.
+- Go to Definition does not resolve local variables, parameters, or members accessed through a value (`token.transfer`): that needs type information. Inherited members are searched in declaration order, without solc's exact linearization for diamond hierarchies.
+- Go to Symbol in Workspace lists top-level symbols only.
 - Syntax diagnostics may duplicate those of another Solidity extension. Turn off `solidityWorkbench.syntaxDiagnostics.enabled`, or the equivalent in the other extension.
 - Another Solidity extension with its own completions or auto-import may conflict with this one and show a similar suggestion next to ours. Disable the feature in one of them if this is distracting.
 - Without any Solidity extension, the workbench starts when the workspace contains a `.sol` file or a `foundry.toml`. A loose `.sol` file opened outside any workspace does not activate it.
@@ -161,4 +186,4 @@ Layout:
 
 - `src/core/`: pure logic, with no `vscode` imports: the project model, remappings, the symbol extraction, the index, the cache, import edits and candidate ranking.
 - `src/host/`: the VS Code adapters of the core: settings, logging, project discovery, watchers.
-- `src/features/<feature>/`: one folder per feature, each registering itself through the `FeatureRegistry`: `autoImport`, `syntaxDiagnostics`, `outline`.
+- `src/features/<feature>/`: one folder per feature, each registering itself through the `FeatureRegistry`: `autoImport`, `syntaxDiagnostics`, `outline`, `navigation`, `formatting`.
