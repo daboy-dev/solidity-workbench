@@ -2,6 +2,11 @@
   "name": "solidity-workbench",
   "displayName": "Solidity Workbench",
   "description": "Productivity tools for Solidity and Foundry projects, starting with auto-import of symbols.",
+  "icon": "images/icon.png",
+  "galleryBanner": {
+    "color": "#1B1E4B",
+    "theme": "dark"
+  },
   "version": "0.1.0",
   "publisher": "local",
   "license": "MIT",

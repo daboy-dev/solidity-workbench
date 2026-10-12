@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256"><defs>
+<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2B2F77"/><stop offset="1" stop-color="#141638"/></linearGradient>
+<linearGradient id="o" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFC14D"/><stop offset="1" stop-color="#FF7A45"/></linearGradient>
+<pattern id="peg" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="12" cy="12" r="3" fill="#FFFFFF" fill-opacity="0.09"/></pattern>
+</defs>
+<rect x="8" y="8" width="240" height="240" rx="52" fill="url(#bg)"/>
+<rect x="8" y="8" width="240" height="240" rx="52" fill="url(#peg)"/>
+<g fill="none" stroke="#E8EAFF" stroke-width="18" stroke-linecap="round" stroke-linejoin="round">
+<path d="M96 60 C70 60 70 72 70 92 L70 112 C70 124 62 128 52 128 C62 128 70 132 70 144 L70 164 C70 184 70 196 96 196"/>
+<path d="M160 60 C186 60 186 72 186 92 L186 112 C186 124 194 128 204 128 C194 128 186 132 186 144 L186 164 C186 184 186 196 160 196"/>
+</g>
+<g><path d="M128 90 L161 109 L128 128 L95 109 Z" fill="#FFD27A"/><path d="M95 109 L128 128 L128 166 L95 147 Z" fill="#FF9A4D"/><path d="M161 109 L128 128 L128 166 L161 147 Z" fill="#E8682E"/></g></svg>

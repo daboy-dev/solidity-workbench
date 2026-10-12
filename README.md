@@ -1,3 +1,5 @@
+<img src="images/icon.png" width="96" alt="Solidity Workbench icon">
+
 # Solidity Workbench
 
 Productivity tools for Solidity in VS Code, starting with Foundry projects. The goal is to make working with Solidity feel as comfortable as working with TypeScript.
