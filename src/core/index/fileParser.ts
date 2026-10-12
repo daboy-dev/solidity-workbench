@@ -1,6 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import { Worker } from "node:worker_threads";
+import { analyzeDocument, type DocumentAnalysis } from "../solidity/analyzeDocument";
 import { extractSymbols } from "../solidity/extractSymbols";
 import type { ExtractionMethod, SymbolDeclaration } from "../solidity/symbols";
 
@@ -19,6 +20,8 @@ export interface FileParser {
   /** How many batches can usefully be parsed at the same time. */
   readonly concurrency?: number;
   parse(paths: readonly string[]): Promise<ParsedFile[]>;
+  /** Outline and syntax problems of an open document's text. */
+  analyzeDocument(text: string): Promise<DocumentAnalysis>;
   dispose(): void;
 }
 
@@ -44,17 +47,33 @@ export class InlineFileParser implements FileParser {
     return out;
   }
 
+  async analyzeDocument(text: string): Promise<DocumentAnalysis> {
+    return analyzeDocument(text);
+  }
+
   dispose(): void {}
 }
 
+export type WorkerTask = { readonly kind: "files"; readonly paths: readonly string[] } | { readonly kind: "document"; readonly text: string };
+
+type TaskResult<T extends WorkerTask> = T extends { kind: "files" } ? ParsedFile[] : DocumentAnalysis;
+
 export interface WorkerRequest {
   readonly id: number;
-  readonly paths: readonly string[];
+  readonly task: WorkerTask;
 }
 
 export interface WorkerResponse {
   readonly id: number;
-  readonly results: ParsedFile[];
+  readonly result: ParsedFile[] | DocumentAnalysis;
+}
+
+/** Executes a task on the current thread (inside the worker, or as a fallback). */
+export async function runTask(task: WorkerTask): Promise<ParsedFile[] | DocumentAnalysis> {
+  if (task.kind === "document") return analyzeDocument(task.text);
+  const out: ParsedFile[] = [];
+  for (const p of task.paths) out.push(await parseFile(p));
+  return out;
 }
 
 /**
@@ -68,7 +87,7 @@ export class WorkerFileParser implements FileParser {
   private readonly workers: Worker[] = [];
   private readonly load = new Map<Worker, number>();
   private nextId = 1;
-  private readonly pending = new Map<number, { paths: readonly string[]; resolve: (r: ParsedFile[]) => void }>();
+  private readonly pending = new Map<number, { task: WorkerTask; resolve: (r: ParsedFile[] | DocumentAnalysis) => void }>();
   private readonly fallback = new InlineFileParser();
   private idleTimer: NodeJS.Timeout | undefined;
   private broken = false;
@@ -83,16 +102,28 @@ export class WorkerFileParser implements FileParser {
   }
 
   parse(paths: readonly string[]): Promise<ParsedFile[]> {
+    return this.submit({ kind: "files", paths });
+  }
+
+  analyzeDocument(text: string): Promise<DocumentAnalysis> {
+    return this.submit({ kind: "document", text });
+  }
+
+  private submit<T extends WorkerTask>(task: T): Promise<TaskResult<T>> {
     const worker = this.pickWorker();
-    if (!worker) return this.fallback.parse(paths);
+    if (!worker) return this.runInline(task);
     if (this.idleTimer) clearTimeout(this.idleTimer);
     this.idleTimer = undefined;
     const id = this.nextId++;
     this.load.set(worker, (this.load.get(worker) ?? 0) + 1);
     return new Promise((resolve) => {
-      this.pending.set(id, { paths, resolve });
-      worker.postMessage({ id, paths } satisfies WorkerRequest);
+      this.pending.set(id, { task, resolve: resolve as (r: ParsedFile[] | DocumentAnalysis) => void });
+      worker.postMessage({ id, task } satisfies WorkerRequest);
     });
+  }
+
+  private runInline<T extends WorkerTask>(task: T): Promise<TaskResult<T>> {
+    return (task.kind === "files" ? this.fallback.parse(task.paths) : this.fallback.analyzeDocument(task.text)) as Promise<TaskResult<T>>;
   }
 
   dispose(): void {
@@ -119,7 +150,7 @@ export class WorkerFileParser implements FileParser {
         if (!entry) return;
         this.pending.delete(msg.id);
         this.load.set(worker, Math.max(0, (this.load.get(worker) ?? 1) - 1));
-        entry.resolve(msg.results);
+        entry.resolve(msg.result);
         if (this.pending.size === 0) this.scheduleIdleStop();
       });
       worker.on("error", (err: Error) => this.fail(`Index worker failed: ${err.message}`));
@@ -161,6 +192,6 @@ export class WorkerFileParser implements FileParser {
   private flushToFallback(): void {
     const entries = [...this.pending.values()];
     this.pending.clear();
-    for (const e of entries) void this.fallback.parse(e.paths).then(e.resolve);
+    for (const e of entries) void this.runInline(e.task).then(e.resolve);
   }
 }

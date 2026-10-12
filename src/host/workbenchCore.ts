@@ -7,6 +7,7 @@ import { ProjectIndexer } from "../core/index/projectIndexer";
 import type { SymbolIndex } from "../core/index/symbolIndex";
 import { findProjectRoot, loadProject, type ProjectModel } from "../core/project/projectModel";
 import { formatRemapping } from "../core/project/remappings";
+import { DocumentAnalysisService, type AnalyzedDocument } from "./documentAnalysis";
 import type { Logger } from "./logger";
 import { affectsCore, readCoreSettings } from "./settings";
 
@@ -30,6 +31,8 @@ export interface WorkbenchCore {
   readonly onDidChangeIndex: vscode.Event<ProjectHandle>;
   /** The project a document belongs to, loading and indexing it on first use. */
   projectFor(uri: vscode.Uri): Promise<ProjectHandle | undefined>;
+  /** Outline and syntax problems of an open document, computed off the main thread. */
+  analyzeDocument(document: vscode.TextDocument): Promise<AnalyzedDocument>;
   projects(): readonly ProjectHandle[];
 }
 
@@ -148,12 +151,18 @@ export class WorkbenchCoreImpl implements WorkbenchCore, vscode.Disposable {
   private readonly disposables: vscode.Disposable[] = [];
   readonly onDidChangeIndex = this.changeEmitter.event;
 
+  private readonly documents: DocumentAnalysisService;
+
   constructor(
     readonly log: Logger,
     private readonly parser: FileParser,
     private readonly cacheDir: string | undefined,
+    /** Parser for interactive work (open documents), kept apart from indexing so it never waits behind it. */
+    interactiveParser: FileParser,
   ) {
+    this.documents = new DocumentAnalysisService(interactiveParser);
     this.disposables.push(
+      this.documents,
       this.changeEmitter,
       vscode.workspace.onDidChangeConfiguration((e) => {
         if (affectsCore(e)) for (const root of this.entries.keys()) this.scheduleReload(root, 0);
@@ -166,6 +175,10 @@ export class WorkbenchCoreImpl implements WorkbenchCore, vscode.Disposable {
         void this.discover();
       }),
     );
+  }
+
+  analyzeDocument(document: vscode.TextDocument): Promise<AnalyzedDocument> {
+    return this.documents.analyze(document);
   }
 
   projects(): readonly ProjectHandle[] {

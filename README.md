@@ -48,6 +48,20 @@ On an *undeclared identifier* diagnostic (solc errors 7576 and 7920, whichever e
 }
 ```
 
+### Syntax diagnostics
+
+Syntax errors are reported as you type, without saving, with messages meant for people:
+
+- `contact Vault {}` → *Unknown keyword `contact`. Did you mean `contract`?*, with a quick fix. Misspelled declaration keywords are only reported where the code could never be valid, so a type named `Contact` is never flagged.
+- A forgotten `}` in the middle of a file → *Missing `}` to close `function deposit` (opened on line 12)*. Indentation is used to find the block that was really left open, not just the last one.
+- Extra or mismatched brackets, and the first parser error (*Missing `;`*, *Unexpected `)`*...). Errors that only follow from an earlier one are not repeated.
+
+Analysis runs in a background thread. Type errors, unknown names and other compiler checks are not part of this layer.
+
+### Outline
+
+The Outline view, breadcrumbs and *Go to Symbol in Editor* (`Ctrl+Shift+O` / `Cmd+Shift+O`) list contracts, interfaces and libraries with their functions, modifiers, events, errors, state variables, structs and enums, plus file-level declarations. The outline keeps working while the file has syntax errors.
+
 ### Other commands
 
 - `Solidity Workbench: Rebuild Symbol Index`: discards the cache and re-indexes every project.
@@ -72,7 +86,7 @@ Requirements: VS Code 1.90 or newer. [Foundry](https://getfoundry.sh) is recomme
 
 ### Working alongside other Solidity extensions
 
-Solidity Workbench does not register a grammar or a language server, and works with or without other Solidity extensions installed: it handles every `*.sol` file whatever its language id. Features that another extension also provides may conflict with it (for example, duplicated suggestions or diagnostics); every feature can be turned off with its `solidityWorkbench.<feature>.enabled` setting.
+Solidity Workbench does not register a grammar, and works with or without other Solidity extensions installed: it handles every `*.sol` file whatever its language id. Features that another extension also provides may conflict with it (for example, duplicated suggestions or diagnostics); every feature can be turned off with its `solidityWorkbench.<feature>.enabled` setting.
 
 ## How it works
 
@@ -107,6 +121,8 @@ As a reference, a synthetic project with 5,651 files (13 copies of OpenZeppelin 
 | --- | --- | --- |
 | `solidityWorkbench.autoImport.enabled` | `true` | Enables the auto-import feature (completions, quick fix, command). |
 | `solidityWorkbench.autoImport.pathStyle` | `"remapped"` | `remapped`: use a remapping when one covers the file, else a relative path. `relative`: always relative paths. |
+| `solidityWorkbench.syntaxDiagnostics.enabled` | `true` | Report syntax errors while typing. |
+| `solidityWorkbench.outline.enabled` | `true` | Provide the document outline. |
 | `solidityWorkbench.index.includeTests` | `true` | Index the project's test folder. |
 | `solidityWorkbench.index.includeScripts` | `true` | Index the project's script folder. |
 | `solidityWorkbench.index.excludeLibTestsAndMocks` | `true` | Skip `test`, `tests`, `mock` and `mocks` folders inside libraries. |
@@ -122,7 +138,8 @@ Each feature has its own `solidityWorkbench.<feature>.enabled` setting; the `ind
 - `import "x.sol";` puts every symbol of `x.sol` in scope and those are not suggested again. Symbols that `x.sol` itself imports, which solc also brings into scope, may still be suggested.
 - Without forge, remappings are inferred with forge's main rules; unusual setups may differ. Install forge, or add a `remappings.txt`, for exact results.
 - Projects without `foundry.toml` (e.g. Hardhat-only) are indexed with Foundry's default layout, so `contracts/` and `node_modules` are only covered when a remapping points at them.
-- The quick fix needs another extension that reports solc diagnostics; on its own, Solidity Workbench does not compile.
+- The import quick fix needs another extension that reports solc diagnostics; on its own, Solidity Workbench does not compile yet.
+- Syntax diagnostics may duplicate those of another Solidity extension. Turn off `solidityWorkbench.syntaxDiagnostics.enabled`, or the equivalent in the other extension.
 - Another Solidity extension with its own completions or auto-import may conflict with this one and show a similar suggestion next to ours. Disable the feature in one of them if this is distracting.
 - Without any Solidity extension, the workbench starts when the workspace contains a `.sol` file or a `foundry.toml`. A loose `.sol` file opened outside any workspace does not activate it.
 - Deleting a folder other than a library may leave its symbols in the index until the next reload or `Rebuild Symbol Index`, depending on how the file watcher reports the deletion on your platform.
@@ -144,4 +161,4 @@ Layout:
 
 - `src/core/`: pure logic, with no `vscode` imports: the project model, remappings, the symbol extraction, the index, the cache, import edits and candidate ranking.
 - `src/host/`: the VS Code adapters of the core: settings, logging, project discovery, watchers.
-- `src/features/<feature>/`: one folder per feature, each registering itself through the `FeatureRegistry`. Today there is `autoImport`.
+- `src/features/<feature>/`: one folder per feature, each registering itself through the `FeatureRegistry`: `autoImport`, `syntaxDiagnostics`, `outline`.

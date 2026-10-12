@@ -2,12 +2,14 @@ import * as vscode from "vscode";
 import { WorkerFileParser } from "./core/index/fileParser";
 import { autoImportFeature } from "./features/autoImport";
 import type { Feature } from "./features/feature";
+import { outlineFeature } from "./features/outline";
 import { FeatureRegistry } from "./features/registry";
+import { syntaxDiagnosticsFeature } from "./features/syntaxDiagnostics";
 import { createLogger } from "./host/logger";
 import { WorkbenchCoreImpl, type WorkbenchCore } from "./host/workbenchCore";
 
 /** Every feature of the workbench. New features are added here. */
-const FEATURES: readonly Feature[] = [autoImportFeature];
+const FEATURES: readonly Feature[] = [autoImportFeature, syntaxDiagnosticsFeature, outlineFeature];
 
 export interface WorkbenchApi {
   readonly core: WorkbenchCore;
@@ -16,9 +18,11 @@ export interface WorkbenchApi {
 
 export function activate(context: vscode.ExtensionContext): WorkbenchApi {
   const log = createLogger();
-  const parser = new WorkerFileParser(context.asAbsolutePath("dist/indexWorker.js"), (m) => log.warn(m));
+  const workerScript = context.asAbsolutePath("dist/indexWorker.js");
+  const parser = new WorkerFileParser(workerScript, (m) => log.warn(m));
+  const interactiveParser = new WorkerFileParser(workerScript, (m) => log.warn(m), 1);
   const cacheDir = (context.storageUri ?? context.globalStorageUri).fsPath;
-  const core = new WorkbenchCoreImpl(log, parser, cacheDir);
+  const core = new WorkbenchCoreImpl(log, parser, cacheDir, interactiveParser);
   const registry = new FeatureRegistry(core, FEATURES);
 
   context.subscriptions.push(

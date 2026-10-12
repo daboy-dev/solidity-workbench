@@ -136,6 +136,28 @@
             "markdownDescription": "Style of the paths written in new imports."
           }
         }
+      },
+      {
+        "title": "Syntax Diagnostics",
+        "order": 3,
+        "properties": {
+          "solidityWorkbench.syntaxDiagnostics.enabled": {
+            "type": "boolean",
+            "default": true,
+            "markdownDescription": "Report syntax errors while typing: unbalanced brackets (pointing at the block that was left open), misspelled keywords such as `contact` (with a quick fix) and parser errors. May conflict with diagnostics from other Solidity extensions."
+          }
+        }
+      },
+      {
+        "title": "Outline",
+        "order": 4,
+        "properties": {
+          "solidityWorkbench.outline.enabled": {
+            "type": "boolean",
+            "default": true,
+            "markdownDescription": "Provide the document outline (Outline view, breadcrumbs, Go to Symbol in Editor) for Solidity files."
+          }
+        }
       }
     ],
     "menus": {

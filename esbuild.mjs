@@ -1,3 +1,4 @@
+import * as fs from "node:fs";
 import * as esbuild from "esbuild";
 
 const production = process.argv.includes("--production");
@@ -36,8 +37,12 @@ if (withTests) {
     entryPoints: {
       runTests: "test/integration/runTests.ts",
       "suite/index": "test/integration/suite/index.ts",
-      "suite/autoImport.test": "test/integration/suite/autoImport.test.ts",
-      "suite/extras.test": "test/integration/suite/extras.test.ts",
+      ...Object.fromEntries(
+        fs
+          .readdirSync("test/integration/suite")
+          .filter((f) => f.endsWith(".test.ts"))
+          .map((f) => [`suite/${f.replace(/\.ts$/, "")}`, `test/integration/suite/${f}`]),
+      ),
     },
     outdir: "out/integration",
   });
