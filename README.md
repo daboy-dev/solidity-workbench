@@ -84,11 +84,14 @@ The `src`, `test`, `script` and `libs` settings of `foundry.toml` are honoured, 
 
 ### Remappings
 
-Remappings come from `forge remappings`, run in the project root. When forge is not available, they are built from:
+Remappings come from `forge remappings`, run in the project root. forge is looked up on the `PATH` and then in `$FOUNDRY_DIR/bin` and `~/.foundry/bin` (where foundryup installs it, often missing from the `PATH` VS Code sees), unless `solidityWorkbench.foundry.forgePath` is set. `Solidity Workbench: Show Log` shows which forge was used and the resulting remappings.
 
-1. `remappings` in `foundry.toml`;
-2. `remappings.txt`;
-3. forge-style inference over the library folders: each library's own `remappings.txt` / `foundry.toml` remappings (made global, as forge does), and `name/` → `lib/name/src/` (or `contracts/`, or the library root), recursively, with shallower copies winning.
+When forge is not available, they are built following forge's own rules (checked against forge 1.x by a test that compares both on several layouts):
+
+1. `remappings` in `foundry.toml`, then `remappings.txt`; these hide any inferred remapping with the same prefix;
+2. for each library, `name/` → `lib/name/src/` (or `contracts/`, or the library root when it has no `lib/` of its own), recursively;
+3. the remappings a library declares in its `remappings.txt` / `foundry.toml`, when the library has a `foundry.toml`;
+4. the shallowest library wins a prefix; a nested library that loses it keeps it scoped to its parent (`lib/parent/:name/=...`).
 
 For each file, the remapping with the longest matching target is used and checked to resolve back to the same file. Remapping contexts (`context:prefix=target`) are respected. If no remapping covers the file, the import uses a relative path.
 
@@ -108,7 +111,7 @@ As a reference, a synthetic project with 5,651 files (13 copies of OpenZeppelin 
 | `solidityWorkbench.index.includeScripts` | `true` | Index the project's script folder. |
 | `solidityWorkbench.index.excludeLibTestsAndMocks` | `true` | Skip `test`, `tests`, `mock` and `mocks` folders inside libraries. |
 | `solidityWorkbench.index.exclude` | `[]` | Glob patterns (relative to the project root) of files to leave out, e.g. `["lib/**/certora/**"]`. |
-| `solidityWorkbench.foundry.forgePath` | `"forge"` | Path to the forge executable. |
+| `solidityWorkbench.foundry.forgePath` | `"forge"` | Path to the forge executable. With the default, `~/.foundry/bin/forge` is also tried. |
 
 Each feature has its own `solidityWorkbench.<feature>.enabled` setting; the `index.*` and `foundry.*` settings belong to the shared core that future features will also use.
 

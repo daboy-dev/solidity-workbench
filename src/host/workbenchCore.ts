@@ -6,6 +6,7 @@ import { cacheFileName } from "../core/index/indexCache";
 import { ProjectIndexer } from "../core/index/projectIndexer";
 import type { SymbolIndex } from "../core/index/symbolIndex";
 import { findProjectRoot, loadProject, type ProjectModel } from "../core/project/projectModel";
+import { formatRemapping } from "../core/project/remappings";
 import type { Logger } from "./logger";
 import { affectsCore, readCoreSettings } from "./settings";
 
@@ -225,9 +226,9 @@ export class WorkbenchCoreImpl implements WorkbenchCore, vscode.Disposable {
   private async createEntry(root: string): Promise<ProjectEntry> {
     const settings = readCoreSettings(vscode.Uri.file(root));
     const model = await loadProject(root, { forgePath: settings.forgePath });
-    this.log.info(
-      `Project ${root}: ${model.remappings.length} remappings from ${model.remappingOrigin === "forge" ? "`forge remappings`" : "remappings.txt/foundry.toml/lib"}`,
-    );
+    const source = model.remappingOrigin === "forge" ? `\`${model.forgeStatus} remappings\`` : `remappings.txt/foundry.toml/lib (${model.forgeStatus})`;
+    this.log.info(`Project ${root}: ${model.remappings.length} remappings from ${source}`);
+    for (const r of model.remappings) this.log.info(`  ${formatRemapping(r)}`);
     const indexer = new ProjectIndexer(model, settings.scope, {
       parser: this.parser,
       ...(this.cacheDir ? { cacheFile: path.join(this.cacheDir, cacheFileName(root)) } : {}),

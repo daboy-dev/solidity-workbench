@@ -9,6 +9,8 @@ export type RemappingOrigin = "forge" | "files";
 export interface LoadedRemappings {
   readonly remappings: Remapping[];
   readonly origin: RemappingOrigin;
+  /** The forge executable that produced the remappings, when origin is "forge". */
+  readonly forge?: string;
   /** Why forge was not used, when origin is "files". */
   readonly forgeError?: string;
 }
@@ -22,6 +24,8 @@ export interface RemappingSourceOptions {
   readonly forgePath?: string;
   /** Skip forge entirely (tests, or when the user disables it). */
   readonly useForge?: boolean;
+  /** Environment used to locate forge (FOUNDRY_DIR, HOME). Injected for tests. */
+  readonly env?: Readonly<Record<string, string | undefined>>;
 }
 
 const FORGE_TIMEOUT_MS = 15_000;
@@ -36,6 +40,23 @@ export const defaultExec: ExecFn = (command, args, cwd) =>
   });
 
 /**
+ * Where to look for forge. foundryup installs it in ~/.foundry/bin and adds
+ * that folder to the PATH of interactive shells only, so VS Code (especially
+ * when started from the Dock) often does not see it on the PATH.
+ */
+export function forgeCandidates(forgePath: string | undefined, env: Readonly<Record<string, string | undefined>> = process.env): string[] {
+  if (forgePath && forgePath !== "forge") return [forgePath];
+  const exe = process.platform === "win32" ? "forge.exe" : "forge";
+  const home = env["HOME"] ?? env["USERPROFILE"];
+  const dirs = [env["FOUNDRY_DIR"], home && path.join(home, ".foundry")].filter((d): d is string => !!d);
+  return [...new Set(["forge", ...dirs.map((d) => path.join(d, "bin", exe))])];
+}
+
+function isNotFound(err: unknown): boolean {
+  return typeof err === "object" && err !== null && (err as { code?: unknown }).code === "ENOENT";
+}
+
+/**
  * Loads remappings for a Foundry project: `forge remappings` when available,
  * otherwise the project's remappings.txt and foundry.toml plus forge-style
  * inference over the library directories.
@@ -47,17 +68,22 @@ export async function loadRemappings(
 ): Promise<LoadedRemappings> {
   let forgeError: string | undefined;
   if (options.useForge !== false) {
-    try {
-      const stdout = await (options.exec ?? defaultExec)(options.forgePath || "forge", ["remappings"], root);
-      return { remappings: parseRemappingsText(stdout).map((r) => relativizeTarget(root, r)), origin: "forge" };
-    } catch (err) {
-      forgeError = err instanceof Error ? err.message : String(err);
+    const exec = options.exec ?? defaultExec;
+    for (const forge of forgeCandidates(options.forgePath, options.env)) {
+      try {
+        const stdout = await exec(forge, ["remappings"], root);
+        return { remappings: parseRemappingsText(stdout).map((r) => relativizeTarget(root, r)), origin: "forge", forge };
+      } catch (err) {
+        forgeError = err instanceof Error ? err.message : String(err);
+        // forge exists but failed (e.g. invalid foundry.toml): the next candidate would fail too.
+        if (!isNotFound(err)) break;
+      }
     }
   }
-  const fromFile = parseRemappingsText(await readText(path.join(root, "remappings.txt")));
-  const inferred = await inferLibRemappings(root, "", config.libs, 0);
+  const project = mergeRemappings(config.remappings, parseRemappingsText(await readText(path.join(root, "remappings.txt"))));
+  const inferred = await inferLibRemappings(root, "", config.libs, 0, true);
   return {
-    remappings: mergeRemappings(config.remappings, fromFile, ...inferred),
+    remappings: [...project, ...resolveInferred(project, inferred)],
     origin: "files",
     ...(forgeError !== undefined ? { forgeError } : {}),
   };
@@ -70,21 +96,33 @@ function relativizeTarget(root: string, r: Remapping): Remapping {
   return { ...r, target: r.target.endsWith("/") && !rel.endsWith("/") ? `${rel}/` : rel };
 }
 
+interface InferredRemapping {
+  readonly remapping: Remapping;
+  /** The library containing the one this remapping comes from ("" for top-level libraries). */
+  readonly parent: string;
+  readonly depth: number;
+}
+
 /**
- * Mimics forge's remapping auto-detection. Returns one list per depth, from
- * shallowest to deepest, so callers can merge with shallower ones taking priority.
- * Within a depth, remappings declared by a library win over inferred `name/` ones.
+ * Mimics forge's remapping auto-detection (checked against forge 1.x):
+ * - every library gets `name/` → `lib/name/src/` (or `contracts/`, or its root
+ *   when it has no lib/ folder of its own);
+ * - the remappings a library declares (remappings.txt, foundry.toml) are only
+ *   read when the library, and every library above it, has a foundry.toml;
+ * - nested libraries are visited recursively.
+ * Results are ordered shallowest first and, within a depth, declared before inferred.
  */
 async function inferLibRemappings(
   root: string,
   base: string,
   libs: readonly string[],
   depth: number,
-): Promise<Remapping[][]> {
+  readDeclared: boolean,
+): Promise<InferredRemapping[]> {
   if (depth >= MAX_LIB_DEPTH) return [];
-  const declared: Remapping[] = [];
-  const auto: Remapping[] = [];
-  const deeper: Remapping[][][] = [];
+  const declared: InferredRemapping[] = [];
+  const auto: InferredRemapping[] = [];
+  const deeper: InferredRemapping[][] = [];
 
   for (const lib of libs) {
     const libDir = joinRel(base, lib);
@@ -93,29 +131,53 @@ async function inferLibRemappings(
       const pkgAbs = path.join(root, pkg);
 
       const tomlText = await readText(path.join(pkgAbs, "foundry.toml"));
+      const isFoundryProject = readDeclared && tomlText !== "";
       const pkgConfig = tomlText ? parseFoundryConfig(tomlText) : undefined;
-      const own = [
-        ...(pkgConfig?.remappings ?? []),
-        ...parseRemappingsText(await readText(path.join(pkgAbs, "remappings.txt"))),
-      ];
-      for (const r of own) declared.push(rebase(pkg, r));
+      if (isFoundryProject) {
+        const own = [...(pkgConfig?.remappings ?? []), ...parseRemappingsText(await readText(path.join(pkgAbs, "remappings.txt")))];
+        for (const r of own) declared.push({ remapping: rebase(pkg, r), parent: base, depth });
+      }
 
-      let target = `${pkg}/`;
+      // Without src/ or contracts/, forge maps the library root, unless it only
+      // wraps its own dependencies (it has a lib/ folder).
+      let target: string | undefined;
       if (await isDir(path.join(pkgAbs, "src"))) target = `${pkg}/src/`;
       else if (await isDir(path.join(pkgAbs, "contracts"))) target = `${pkg}/contracts/`;
-      auto.push({ context: "", prefix: `${name}/`, target });
+      else if (!(await isDir(path.join(pkgAbs, "lib")))) target = `${pkg}/`;
+      if (target) auto.push({ remapping: { context: "", prefix: `${name}/`, target }, parent: base, depth });
 
-      deeper.push(await inferLibRemappings(root, pkg, pkgConfig?.libs ?? ["lib"], depth + 1));
+      deeper.push(await inferLibRemappings(root, pkg, pkgConfig?.libs ?? ["lib"], depth + 1, isFoundryProject));
     }
   }
+  return [...declared, ...auto, ...deeper.flat().sort((a, b) => a.depth - b.depth)];
+}
 
-  const levels: Remapping[][] = [[...declared, ...auto]];
-  for (const nested of deeper) {
-    nested.forEach((list, i) => {
-      (levels[i + 1] ??= []).push(...list);
-    });
+/**
+ * Combines inferred remappings the way forge does: a prefix defined by the
+ * project itself hides every inferred one; otherwise the shallowest wins, and
+ * a deeper library whose prefix is taken keeps it scoped to its parent library
+ * (`lib/parent/:prefix=target`).
+ */
+function resolveInferred(project: readonly Remapping[], inferred: readonly InferredRemapping[]): Remapping[] {
+  const projectPrefixes = new Set(project.map((r) => r.prefix));
+  const global = new Set<string>();
+  const scoped = new Set<string>();
+  const out: Remapping[] = [];
+  for (const { remapping: r, parent } of inferred) {
+    if (projectPrefixes.has(r.prefix)) continue;
+    if (!global.has(r.prefix)) {
+      global.add(r.prefix);
+      out.push(r);
+      continue;
+    }
+    if (!parent) continue;
+    const context = `${parent}/`;
+    const key = `${context}:${r.prefix}`;
+    if (scoped.has(key)) continue;
+    scoped.add(key);
+    out.push({ ...r, context });
   }
-  return levels;
+  return out;
 }
 
 /**

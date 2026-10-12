@@ -2,7 +2,7 @@ import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 import { parseFoundryConfig } from "../../src/core/project/foundryConfig";
 import { findProjectRoot, loadProject } from "../../src/core/project/projectModel";
-import { loadRemappings } from "../../src/core/project/remappingSource";
+import { forgeCandidates, loadRemappings } from "../../src/core/project/remappingSource";
 import { formatRemapping } from "../../src/core/project/remappings";
 
 const FIXTURE = path.resolve(__dirname, "../fixtures/foundry-project");
@@ -57,9 +57,46 @@ describe("loadRemappings", () => {
     expect(lines).toContain("@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/");
     // Inferred from lib/<name>/src.
     expect(lines).toContain("solmate-lite/=lib/solmate-lite/src/");
-    // The shallow copy wins over the nested lib/solmate-lite/lib/openzeppelin-contracts.
+    // The shallow copy wins; the nested one is scoped to the library that contains it.
     expect(lines).toContain("openzeppelin-contracts/=lib/openzeppelin-contracts/contracts/");
-    expect(lines).not.toContain("openzeppelin-contracts/=lib/solmate-lite/lib/openzeppelin-contracts/contracts/");
+    expect(lines).toContain("lib/solmate-lite/:openzeppelin-contracts/=lib/solmate-lite/lib/openzeppelin-contracts/contracts/");
+  });
+
+  it("tries ~/.foundry/bin/forge when forge is not on the PATH", async () => {
+    const tried: string[] = [];
+    const loaded = await loadRemappings(FIXTURE, parseFoundryConfig(""), {
+      env: { HOME: "/home/dev" },
+      exec: async (cmd) => {
+        tried.push(cmd);
+        if (cmd === "forge") throw Object.assign(new Error("spawn forge ENOENT"), { code: "ENOENT" });
+        return "a/=lib/a/\n";
+      },
+    });
+    expect(tried).toEqual(["forge", path.join("/home/dev", ".foundry", "bin", "forge")]);
+    expect(loaded.origin).toBe("forge");
+    expect(loaded.forge).toBe(path.join("/home/dev", ".foundry", "bin", "forge"));
+  });
+
+  it("does not try other locations when forge runs but fails", async () => {
+    const tried: string[] = [];
+    const loaded = await loadRemappings(FIXTURE, parseFoundryConfig(""), {
+      env: { HOME: "/home/dev" },
+      exec: async (cmd) => {
+        tried.push(cmd);
+        throw new Error("invalid foundry.toml");
+      },
+    });
+    expect(tried).toEqual(["forge"]);
+    expect(loaded.origin).toBe("files");
+  });
+
+  it("uses only the configured forge path when set", () => {
+    expect(forgeCandidates("/opt/forge", { HOME: "/home/dev" })).toEqual(["/opt/forge"]);
+    expect(forgeCandidates(undefined, { HOME: "/h", FOUNDRY_DIR: "/f" })).toEqual([
+      "forge",
+      path.join("/f", "bin", "forge"),
+      path.join("/h", ".foundry", "bin", "forge"),
+    ]);
   });
 });
 

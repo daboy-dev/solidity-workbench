@@ -68,7 +68,7 @@
             "type": "string",
             "default": "forge",
             "scope": "machine-overridable",
-            "markdownDescription": "Path to the `forge` executable used to run `forge remappings`. When it cannot be run, remappings are read from `remappings.txt`, `foundry.toml` and the library folders."
+            "markdownDescription": "Path to the `forge` executable used to run `forge remappings`. With the default `forge`, the `PATH`, `$FOUNDRY_DIR/bin` and `~/.foundry/bin` are tried. When forge cannot be run, remappings are inferred from `remappings.txt`, `foundry.toml` and the library folders following forge's rules."
           }
         }
       },

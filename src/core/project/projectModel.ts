@@ -14,6 +14,8 @@ export class ProjectModel {
     readonly remappings: readonly Remapping[],
     readonly remappingOrigin: RemappingOrigin,
     readonly hasFoundryToml: boolean,
+    /** The forge executable used, or why it could not be used. */
+    readonly forgeStatus: string = "",
   ) {}
 
   sourceUnitName(absPath: string): string {
@@ -95,7 +97,8 @@ export async function loadProject(root: string, options: RemappingSourceOptions 
   const hasFoundryToml = await exists(path.join(root, FOUNDRY_TOML));
   const config = hasFoundryToml ? await readConfig(root) : DEFAULT_FOUNDRY_CONFIG;
   const loaded = await loadRemappings(root, config, options);
-  return new ProjectModel(root, config, loaded.remappings, loaded.origin, hasFoundryToml);
+  const forgeStatus = loaded.forge ?? (loaded.forgeError !== undefined ? `forge unavailable: ${loaded.forgeError}` : "");
+  return new ProjectModel(root, config, loaded.remappings, loaded.origin, hasFoundryToml, forgeStatus);
 }
 
 async function exists(p: string): Promise<boolean> {
