@@ -15,6 +15,7 @@ import {
   type Builtin,
 } from "./builtins";
 import type { Expr } from "./cursorContext";
+import type { Sym, TypeScope } from "./symbols";
 
 const SIZES = Array.from({ length: 32 }, (_, i) => (i + 1) * 8);
 
@@ -56,13 +57,18 @@ export function canonicalType(type: string): string {
 
 /** What an expression is, as far as completion is concerned. */
 export type ExprType =
-  /** A value of a Solidity type, written as in source (`uint256`, `address payable`, `Listing`, `IERC20`). */
-  | { readonly kind: "value"; readonly type: string }
+  /**
+   * A value of a Solidity type, written as in source (`uint256`, `address payable`, `Listing`, `IERC20`),
+   * with where it was written, to resolve user-defined names.
+   */
+  | { readonly kind: "value"; readonly type: string; readonly at?: TypeScope }
   | { readonly kind: "namespace"; readonly name: "msg" | "block" | "tx" | "abi" }
   /** `type(X)`. */
-  | { readonly kind: "typeInfo"; readonly of: string }
-  /** A type name used as an expression: `bytes.concat`, `Lib.f`, `Color.Red`. */
-  | { readonly kind: "static"; readonly type: string }
+  | { readonly kind: "typeInfo"; readonly of: string; readonly at?: TypeScope }
+  /** A type or unit alias used as an expression: `bytes.concat`, `Lib.f`, `Color.Red`, `Alias.Token`. */
+  | { readonly kind: "static"; readonly type: string; readonly sym?: Sym }
+  /** A function used as a value (`this.f.selector`), or called (its returns). */
+  | { readonly kind: "function"; readonly sym: Sym; readonly external: boolean }
   | { readonly kind: "this" }
   | { readonly kind: "super" };
 

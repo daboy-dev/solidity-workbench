@@ -1,5 +1,8 @@
 import * as vscode from "vscode";
 import { selectForCompletion, subsequenceFilter } from "../../core/candidates";
+import { namesInScope } from "../../core/completion/complete";
+import { cursorContext } from "../../core/completion/cursorContext";
+import { BASELINE_VERSION } from "../../core/completion/languageVersion";
 import { isInCommentOrString } from "../../core/solidity/lexContext";
 import type { WorkbenchCore } from "../../host/workbenchCore";
 import { completionKind, ImportContext, importStatementFor, kindLabel } from "./importContext";
@@ -34,7 +37,11 @@ export class AutoImportCompletionProvider implements vscode.CompletionItemProvid
     if (isInCommentOrString(ctx.analysis.trivia, document.offsetAt(position))) return undefined;
     if (isInsideImportOrPragma(ctx, document.offsetAt(start))) return undefined;
 
-    const all = ctx.candidates({ nameFilter: subsequenceFilter(prefix) });
+    // A name already in scope (a local, an inherited member, a transitive plain import) needs no import.
+    const cursor = cursorContext(this.core.structures.structure(document), document.offsetAt(position));
+    const inScope = await namesInScope(cursor, { version: BASELINE_VERSION, path: document.uri.fsPath, host: this.core.structures.host(project) });
+    if (token.isCancellationRequested) return undefined;
+    const all = ctx.candidates({ nameFilter: subsequenceFilter(prefix) }, inScope);
     const candidates = selectForCompletion(all, prefix, MAX_ITEMS);
 
     const items: vscode.CompletionItem[] = [];

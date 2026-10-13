@@ -28,13 +28,14 @@ export class ImportContext {
     return new ImportContext(document, project, analysis, excludeFiles);
   }
 
-  candidates(options: Pick<CandidateQuery, "nameFilter" | "name"> = {}): ImportCandidate[] {
+  /** `inScope`: further names already visible where the symbol will be used (locals, inherited members...). */
+  candidates(options: Pick<CandidateQuery, "nameFilter" | "name"> = {}, inScope: Iterable<string> = []): ImportCandidate[] {
     return findImportCandidates({
       project: this.project.model,
       index: this.project.index,
       importerPath: this.document.uri.fsPath,
       pathStyle: readAutoImportPathStyle(this.document.uri),
-      excludeNames: new Set([...this.analysis.declaredNames, ...this.analysis.importedNames]),
+      excludeNames: new Set([...this.analysis.declaredNames, ...this.analysis.importedNames, ...inScope]),
       excludeFiles: this.excludeFiles,
       ...options,
     });

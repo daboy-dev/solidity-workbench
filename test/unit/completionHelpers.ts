@@ -1,6 +1,8 @@
+import * as path from "node:path";
 import { complete, type CompletionEntry, type CompletionEnv } from "../../src/core/completion/complete";
 import { cursorContext, type CursorContext } from "../../src/core/completion/cursorContext";
 import { parseStructure } from "../../src/core/completion/structure";
+import { structureFile, type StructureHost } from "../../src/core/completion/symbols";
 
 /** Cursor context at the `|` marker of `source` (the marker is removed). */
 export function at(source: string): CursorContext {
@@ -21,4 +23,17 @@ export async function labels(source: string, env: Partial<CompletionEnv> = {}): 
 /** Wraps statements in a function body. */
 export function inBody(body: string, header = "function f(address a, uint256 n) external"): string {
   return `pragma solidity ^0.8.20;\ncontract C {\n    ${header} {\n        ${body}\n    }\n}\n`;
+}
+
+/** In-memory files; relative imports only (remappings are tested elsewhere). */
+export function memoryHost(files: Record<string, string>): StructureHost {
+  return {
+    load: async (p) => (files[p] !== undefined ? structureFile(p, files[p]) : undefined),
+    resolveImport: (importPath, importer) => (importPath.startsWith(".") ? path.posix.join(path.posix.dirname(importer), importPath) : importPath),
+  };
+}
+
+/** Entries for the `|` marker in `files[path]`, with the other files reachable through imports. */
+export async function entriesIn(files: Record<string, string>, file: string, env: Partial<CompletionEnv> = {}): Promise<CompletionEntry[]> {
+  return complete(at(files[file]!), { version: "0.8.30", path: file, host: memoryHost(files), ...env });
 }

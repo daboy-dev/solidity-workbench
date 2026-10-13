@@ -10,6 +10,7 @@ import { formatRemapping } from "../core/project/remappings";
 import { DocumentAnalysisService, type AnalyzedDocument, type AnalyzedFile } from "./documentAnalysis";
 import type { Logger } from "./logger";
 import { affectsCore, readCoreSettings } from "./settings";
+import { StructureService } from "./structures";
 
 /** A loaded project and its index, as seen by features. */
 export interface ProjectHandle {
@@ -35,6 +36,8 @@ export interface WorkbenchCore {
   analyzeDocument(document: vscode.TextDocument): Promise<AnalyzedDocument>;
   /** Same for a file as saved on disk (cached by modification time). */
   analyzeFile(path: string): Promise<AnalyzedFile | undefined>;
+  /** Tolerant structures of open documents and files on disk, for completion. */
+  readonly structures: StructureService;
   projects(): readonly ProjectHandle[];
 }
 
@@ -154,6 +157,7 @@ export class WorkbenchCoreImpl implements WorkbenchCore, vscode.Disposable {
   readonly onDidChangeIndex = this.changeEmitter.event;
 
   private readonly documents: DocumentAnalysisService;
+  readonly structures = new StructureService();
 
   constructor(
     readonly log: Logger,
@@ -165,6 +169,7 @@ export class WorkbenchCoreImpl implements WorkbenchCore, vscode.Disposable {
     this.documents = new DocumentAnalysisService(interactiveParser);
     this.disposables.push(
       this.documents,
+      this.structures,
       this.changeEmitter,
       vscode.workspace.onDidChangeConfiguration((e) => {
         if (affectsCore(e)) for (const root of this.entries.keys()) this.scheduleReload(root, 0);

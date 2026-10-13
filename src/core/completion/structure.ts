@@ -28,7 +28,9 @@ export type DeclKind =
   | "return"
   | "local"
   | "field"
-  | "enumValue";
+  | "enumValue"
+  /** A unit alias: `import "x.sol" as X;`. */
+  | "module";
 
 export interface Param {
   readonly type: string;

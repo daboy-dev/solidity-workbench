@@ -122,4 +122,44 @@ suite("Language completion", () => {
       await waitFor(() => api.isFeatureActive("completion"));
     }
   });
+
+  test("struct literal: missing fields left of `:`, matching values right of it", async () => {
+    const source = (cursor: string) => `// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+contract Marketplace {
+    struct Listing {
+        address nftAddress;
+        address sellerAddress;
+        uint256 tokenId;
+        uint256 price;
+    }
+
+    function listNFT(address nftAddress_, uint256 tokenId_, uint256 price_) external {
+        Listing listing = Listing({
+            nftAddress: nftAddress_,
+            ${cursor}
+        });
+    }
+}
+`;
+    let { editor, position } = await openAtMarker("src/Market.sol", source("|"));
+    const fields = (await completions(editor.document, position)).filter((i) => i.kind === vscode.CompletionItemKind.Field).map(labelOf);
+    assert.deepEqual(fields, ["sellerAddress", "tokenId", "price"]);
+    await acceptFirstSuggestion(editor, position);
+    assert.match(editor.document.getText(), /nftAddress_,\n {12}sellerAddress: \n/);
+    await vscode.commands.executeCommand("workbench.action.revertAndCloseActiveEditor");
+
+    ({ editor, position } = await openAtMarker("src/Market2.sol", source("price: |")));
+    await acceptFirstSuggestion(editor, position);
+    assert.match(editor.document.getText(), /price: price_\n/);
+  });
+
+  test("the auto-import skips names already in scope", async () => {
+    const { editor, position } = await openAtMarker("src/InScope.sol", body("^0.8.20", "uint256 Owned = 1;\n        Owne|"));
+    const items = await completions(editor.document, position);
+    const owned = items.filter((i) => labelOf(i) === "Owned");
+    assert.equal(owned.length, 1, `got: ${items.map((i) => `${labelOf(i)}:${i.detail}`).join(" | ")}`);
+    assert.equal(owned[0]!.kind, vscode.CompletionItemKind.Variable);
+  });
 });
