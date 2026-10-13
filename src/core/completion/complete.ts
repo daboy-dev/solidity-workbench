@@ -26,7 +26,7 @@ import {
   stateAttributes,
   type Keyword,
 } from "./keywords";
-import { DATA_LOCATIONS, type Decl, type DeclKind, type Param } from "./structure";
+import { DATA_LOCATIONS, type ContractNode, type Decl, type DeclKind, type Param } from "./structure";
 import { structureFile, SymbolResolver, type StructureFile, type StructureHost, type Sym, type TypeScope } from "./symbols";
 import { canonicalType, elementaryTypeInfo, ELEMENTARY_TYPES, isReferenceType, staticMembers, valueMembers, type ExprType } from "./types";
 import { Typer } from "./typing";
@@ -224,7 +224,8 @@ class Session {
         out.keywords(functionAttributes(site.callable, site.used, this.ctx.contract !== undefined));
         for (const sym of await this.scope()) {
           const self = site.callable === "modifier" && this.ctx.callable?.name === sym.name;
-          if (sym.decl.kind === "modifier" && !site.used.includes(sym.name) && !self) out.add(this.symEntry(sym, RANK.member));
+          // After the keywords: visibility and mutability come first in a header.
+          if (sym.decl.kind === "modifier" && !site.used.includes(sym.name) && !self) out.add(this.symEntry(sym, RANK.keyword));
         }
         break;
       case "typeName":
@@ -423,7 +424,85 @@ class Session {
 
   private async members(receiver: Expr): Promise<void> {
     const type = await this.typer.typeOf(receiver);
-    if (type) this.builtinMembers(type);
+    if (!type) return;
+    const { out } = this;
+    switch (type.kind) {
+      case "value": {
+        const sym = await this.typer.typeSym(type);
+        if (!sym) return this.builtinMembers(type);
+        if (sym.decl.kind === "struct") {
+          for (const f of sym.decl.members ?? []) out.add({ label: f.name, kind: "field", rank: RANK.member, ...(f.type ? { detail: f.type } : {}) });
+          return;
+        }
+        const node = this.resolver.contractOf(sym);
+        if (node) await this.contractMembers(sym.file, node, (d) => isExternallyVisible(d));
+        return;
+      }
+      case "static": {
+        const sym = type.sym;
+        if (!sym) return this.builtinMembers(type);
+        if (sym.module) {
+          for (const [name, syms] of await this.resolver.fileScope(sym.module)) out.add({ ...this.symEntry(syms[0]!, RANK.member), label: name });
+          return;
+        }
+        if (sym.decl.kind === "enum") {
+          for (const v of sym.decl.members ?? []) out.add({ label: v.name, kind: "enumMember", detail: sym.name, rank: RANK.member });
+          return;
+        }
+        if (sym.decl.kind === "type") {
+          const underlying = sym.decl.type ?? "";
+          out.add({ label: "wrap", kind: "method", detail: `wrap(${underlying}) returns (${sym.name})`, rank: RANK.member });
+          out.add({ label: "unwrap", kind: "method", detail: `unwrap(${sym.name}) returns (${underlying})`, rank: RANK.member });
+          return;
+        }
+        const node = this.resolver.contractOf(sym);
+        // `Lib.f`, `C.Struct`, `I.f.selector`, `C.CONSTANT`: everything but private members.
+        if (node) await this.contractMembers(sym.file, node, (d) => d.visibility !== "private" && !!d.name);
+        return;
+      }
+      case "this":
+        if (this.ctx.contract) await this.contractMembers(this.file, this.ctx.contract, (d) => isExternallyVisible(d));
+        return;
+      case "super":
+        if (!this.ctx.contract) return;
+        for (const base of await this.resolver.bases(this.file, this.ctx.contract)) {
+          await this.contractMembers(
+            base.file,
+            base.contract,
+            (d) => (d.kind === "function" || d.kind === "stateVariable" || d.kind === "constant") && d.visibility !== "external" && d.visibility !== "private",
+          );
+        }
+        return;
+      case "function":
+        out.add({ label: "selector", kind: "property", detail: "bytes4", rank: RANK.member });
+        if (type.external) out.add({ label: "address", kind: "property", detail: "address", rank: RANK.member });
+        return;
+      case "typeInfo": {
+        if (elementaryTypeInfo(type.of)) return this.builtinMembers(type);
+        const sym = await this.resolver.resolvePath(type.at ?? this.at, type.of);
+        const kind = sym?.decl.kind;
+        if (kind === "interface") out.builtins(INTERFACE_TYPE_INFO, RANK.member, true);
+        else if (kind === "contract" || kind === "abstract") out.builtins(CONTRACT_TYPE_INFO, RANK.member, true);
+        else if (kind === "enum") out.builtins(ENUM_TYPE_INFO, RANK.member, true);
+        else this.builtinMembers(type);
+        return;
+      }
+      case "namespace":
+        return this.builtinMembers(type);
+    }
+  }
+
+  /** Members of a contract (inherited included) accepted by `filter`, as members of a value. */
+  private async contractMembers(file: StructureFile, contract: ContractNode, filter: (d: Decl) => boolean): Promise<void> {
+    for (const sym of await this.resolver.members(file, contract)) {
+      if (!filter(sym.decl)) continue;
+      const decl = sym.decl;
+      const entry = this.symEntry(sym, RANK.member);
+      if (decl.kind === "function") this.out.add({ ...entry, kind: "method" });
+      // A public state variable seen from outside is its getter.
+      else if (decl.kind === "stateVariable" || decl.kind === "constant" || decl.kind === "immutable") this.out.add({ ...entry, kind: decl.visibility === "public" ? "method" : entry.kind });
+      else this.out.add(entry);
+    }
   }
 
   private builtinMembers(type: ExprType): void {
@@ -521,6 +600,12 @@ function detailOf(decl: Decl): string | undefined {
 
 function formatParam(p: Param): string {
   return [p.type, p.location, p.name].filter(Boolean).join(" ");
+}
+
+/** Functions callable and state variables readable from outside the contract. */
+function isExternallyVisible(d: Decl): boolean {
+  if (d.kind === "function") return d.visibility === "external" || d.visibility === "public";
+  return (d.kind === "stateVariable" || d.kind === "constant" || d.kind === "immutable") && d.visibility === "public";
 }
 
 /** Rank of a value suggestion given what is expected there. */

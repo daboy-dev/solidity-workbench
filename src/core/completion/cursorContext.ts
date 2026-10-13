@@ -473,10 +473,12 @@ function expressionTail(structure: SourceStructure, from: number, before: number
   if (last.text === "emit" || last.text === "revert") return { kind: "expression", keyword: last.text };
   const operandEnd = last.kind === "number" || last.kind === "string" || last.text === ")" || last.text === "]" || (last.kind === "ident" && !KEYWORDS_EXPECTING_MORE.has(last.text));
   if (operandEnd) return NONE;
-  // `x = |`, `a == |`: the value should match the left-hand side.
+  // `x = |`, `a == |`: the value should match the left-hand side, whatever the whole expression is for
+  // (`require(a == |)` expects a bool, but the operand an `a`). A declaration names its own type.
   if (ASSIGNMENTS.has(last.text) || COMPARISONS.has(last.text)) {
     const lhs = parseBackward(structure, before - 2);
-    if (lhs && !expected) return { kind: "expression", expected: { kind: "sameAs", expr: lhs.expr } };
+    const declaration = expected?.kind === "type" && expected.name !== undefined && last.text === "=" && tokens[before - 2]?.text === expected.name;
+    if (lhs && lhs.first >= from && !declaration) return { kind: "expression", expected: { kind: "sameAs", expr: lhs.expr } };
   }
   return { kind: "expression", ...(expected ? { expected } : {}) };
 }

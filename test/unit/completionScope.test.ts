@@ -111,6 +111,8 @@ contract C {
     expect(shown(await entries(src("return |")))[0]?.label).toBe("ok");
     expect(shown(await entries(src("g(ok, |)")))[0]?.label).toBe("who");
     expect(shown(await entries(src("require(|)")))[0]?.label).toBe("ok");
+    // An operand matches the other side of the comparison, not the bool `require` takes.
+    expect(labelsOf(shown(await entries(src("require(who == |)"))).slice(0, 3))).toEqual(["who", "msg.sender", "tx.origin"]);
   });
 
   it("suggests the scope at statement start, before keywords and types", async () => {

@@ -162,4 +162,35 @@ contract Marketplace {
     assert.equal(owned.length, 1, `got: ${items.map((i) => `${labelOf(i)}:${i.detail}`).join(" | ")}`);
     assert.equal(owned[0]!.kind, vscode.CompletionItemKind.Variable);
   });
+
+  test("members of declared types across files: struct fields, interfaces, inherited functions", async () => {
+    const source = (cursor: string) => `// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
+contract Shop is Ownable {
+    struct Order { address buyer; uint256 amount; }
+    mapping(uint256 => Order) internal orders;
+
+    constructor() Ownable(msg.sender) {}
+
+    function f(uint256 id, address token) external {
+        ${cursor}
+    }
+}
+`;
+    const membersAt = async (file: string, cursor: string) => {
+      const { editor, position } = await openAtMarker(file, source(cursor));
+      return (await completions(editor.document, position, ".")).map(labelOf);
+    };
+    assert.deepEqual(await membersAt("src/Shop1.sol", "orders[id].|"), ["buyer", "amount"]);
+    assert.ok((await membersAt("src/Shop2.sol", "IERC20(token).|")).includes("balanceOf"));
+    // Inherited two files away (Shop → Ownable → Context); private members stay hidden.
+    const { editor, position } = await openAtMarker("src/Shop3.sol", source("address who = |"));
+    const values = (await completions(editor.document, position)).map(labelOf);
+    assert.ok(values.includes("_msgSender") && values.includes("orders"), values.join(", "));
+    assert.ok(!values.includes("_owner"));
+  });
 });
