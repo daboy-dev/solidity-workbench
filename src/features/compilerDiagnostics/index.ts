@@ -1,9 +1,9 @@
 import * as vscode from "vscode";
 import { compile, solcLabel, type CompileResult, type CompilerDiagnostic } from "../../core/compiler/compile";
 import { resolveErrorCodes } from "../../core/compiler/compilerSettings";
-import { listInstalledSolc, svmDirs, type InstalledSolc } from "../../core/compiler/solcVersions";
 import { isAbortError } from "../../core/process";
 import { isFeatureEnabled, SECTION } from "../../host/settings";
+import { configuredSolc, installedSolc, invalidateInstalledSolc } from "../../host/solc";
 import { positionConverter } from "../../host/sourceHost";
 import type { ProjectHandle, WorkbenchCore } from "../../host/workbenchCore";
 import { isSolidityDocument, type Feature } from "../feature";
@@ -16,7 +16,6 @@ export const compilerDiagnosticsFeature: Feature = {
 
 export const COMPILER_SOURCE = "solc";
 const UNNECESSARY_CODES = new Set(["2072", "5667", "5740"]);
-const INSTALLED_TTL_MS = 30_000;
 
 interface Settings {
   readonly delay: number;
@@ -26,11 +25,10 @@ interface Settings {
 
 function readSettings(resource?: vscode.Uri): Settings {
   const cfg = vscode.workspace.getConfiguration(SECTION, resource);
-  const solcPath = cfg.get<string>("compiler.solcPath", "").trim();
   return {
     delay: Math.max(0, cfg.get<number>("compilerDiagnostics.delay", 400)),
     ignoredCodes: resolveErrorCodes(cfg.get<Array<string | number>>("compilerDiagnostics.ignoredCodes", [])),
-    solcPath: solcPath || undefined,
+    solcPath: configuredSolc(resource),
   };
 }
 
@@ -42,7 +40,6 @@ class CompilerDiagnostics implements vscode.Disposable {
   private readonly lastResult = new Map<string, { label: string; tooltip: string; warning: boolean }>();
   private readonly notifiedMissing = new Set<string>();
   private readonly disposables: vscode.Disposable[] = [];
-  private installed: { at: number; list: Promise<InstalledSolc[]> } | undefined;
 
   constructor(private readonly core: WorkbenchCore) {
     this.status.name = "Solidity Workbench: solc";
@@ -63,7 +60,7 @@ class CompilerDiagnostics implements vscode.Disposable {
       vscode.window.onDidChangeActiveTextEditor(() => this.updateStatus()),
       vscode.workspace.onDidChangeConfiguration((e) => {
         if (e.affectsConfiguration(`${SECTION}.compiler`) || e.affectsConfiguration(`${SECTION}.compilerDiagnostics`)) {
-          this.installed = undefined;
+          invalidateInstalledSolc();
           for (const editor of vscode.window.visibleTextEditors) this.schedule(editor.document, 0);
         }
       }),
@@ -105,7 +102,7 @@ class CompilerDiagnostics implements vscode.Disposable {
         project: project.model,
         entry: document.uri.fsPath,
         overlays,
-        installed: await this.installedSolc(),
+        installed: await installedSolc(),
         ...(settings.solcPath ? { solcOverride: settings.solcPath } : {}),
         extraIgnoredCodes: settings.ignoredCodes,
         signal: controller.signal,
@@ -172,13 +169,6 @@ class CompilerDiagnostics implements vscode.Disposable {
     return analysis.problems.length > 0;
   }
 
-  private installedSolc(): Promise<InstalledSolc[]> {
-    if (!this.installed || Date.now() - this.installed.at > INSTALLED_TTL_MS) {
-      this.installed = { at: Date.now(), list: listInstalledSolc(svmDirs()) };
-    }
-    return this.installed.list;
-  }
-
   private async offerInstall(project: ProjectHandle, requirement: string): Promise<void> {
     const key = `${project.model.root}\u0000${requirement}`;
     if (this.notifiedMissing.has(key)) return;
@@ -195,7 +185,7 @@ class CompilerDiagnostics implements vscode.Disposable {
       const terminal = vscode.window.createTerminal({ name: "forge build", cwd: project.model.root });
       terminal.show();
       terminal.sendText(`"${forge}" build`);
-      this.installed = undefined;
+      invalidateInstalledSolc();
     } else if (choice === settings) {
       void vscode.commands.executeCommand("workbench.action.openSettings", `${SECTION}.compiler`);
     }

@@ -120,8 +120,19 @@
         }
       },
       {
-        "title": "Auto Import",
+        "title": "Completion",
         "order": 2,
+        "properties": {
+          "solidityWorkbench.completion.enabled": {
+            "type": "boolean",
+            "default": true,
+            "markdownDescription": "Suggest Solidity types and keywords for the context, variables and parameters in scope, contract members (including inherited ones), struct fields in `S({...})`, members after `.` (`msg.sender`, `block.timestamp`, address and array members, struct fields...) and global functions, according to the file's solc version. May duplicate completions from other Solidity extensions."
+          }
+        }
+      },
+      {
+        "title": "Auto Import",
+        "order": 3,
         "properties": {
           "solidityWorkbench.autoImport.enabled": {
             "type": "boolean",
@@ -146,7 +157,7 @@
       },
       {
         "title": "Syntax Diagnostics",
-        "order": 3,
+        "order": 4,
         "properties": {
           "solidityWorkbench.syntaxDiagnostics.enabled": {
             "type": "boolean",
@@ -157,7 +168,7 @@
       },
       {
         "title": "Outline",
-        "order": 6,
+        "order": 7,
         "properties": {
           "solidityWorkbench.outline.enabled": {
             "type": "boolean",
@@ -168,7 +179,7 @@
       },
       {
         "title": "Navigation",
-        "order": 7,
+        "order": 8,
         "properties": {
           "solidityWorkbench.navigation.enabled": {
             "type": "boolean",
@@ -179,7 +190,7 @@
       },
       {
         "title": "Formatting",
-        "order": 8,
+        "order": 9,
         "properties": {
           "solidityWorkbench.formatting.enabled": {
             "type": "boolean",
@@ -190,7 +201,7 @@
       },
       {
         "title": "Compiler Diagnostics",
-        "order": 4,
+        "order": 5,
         "properties": {
           "solidityWorkbench.compilerDiagnostics.enabled": {
             "type": "boolean",
@@ -218,7 +229,7 @@
       },
       {
         "title": "Compiler",
-        "order": 5,
+        "order": 6,
         "properties": {
           "solidityWorkbench.compiler.solcPath": {
             "type": "string",

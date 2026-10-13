@@ -3,6 +3,7 @@ import { WorkerFileParser } from "./core/index/fileParser";
 import { autoImportFeature } from "./features/autoImport";
 import type { Feature } from "./features/feature";
 import { compilerDiagnosticsFeature } from "./features/compilerDiagnostics";
+import { completionFeature } from "./features/completion";
 import { formattingFeature } from "./features/formatting";
 import { navigationFeature } from "./features/navigation";
 import { outlineFeature } from "./features/outline";
@@ -13,6 +14,7 @@ import { WorkbenchCoreImpl, type WorkbenchCore } from "./host/workbenchCore";
 
 /** Every feature of the workbench. New features are added here. */
 const FEATURES: readonly Feature[] = [
+  completionFeature,
   autoImportFeature,
   syntaxDiagnosticsFeature,
   compilerDiagnosticsFeature,
