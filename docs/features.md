@@ -8,19 +8,27 @@ Suggestions for the code you are writing, also when it is half-written (unclosed
 
 - **Types and keywords for the context**: `address`, `bool`, `string`, `bytes`, `bytes1`…`bytes32`, `uint8`…`uint256`, `int8`…`int256`, `mapping` (as a snippet); `memory` / `storage` / `calldata` after reference types; `public`, `constant`, `immutable`, `transient`… after the type of a state variable; visibility, mutability, `virtual`, `override`, `returns` and the modifiers in scope in function headers, never repeating or contradicting what is already written; `indexed` in events; statement keywords (`if`, `for`, `emit`, `revert`, `unchecked`…) only inside bodies; units (`ether`, `days`…) after a number.
 - **Values in scope**: parameters, local variables (respecting block scoping), state variables, constants and functions of the contract and of the contracts it inherits from, in any file (private members of bases excluded), and names declared or imported at file level. Events are suggested after `emit`, errors after `revert`.
-- **Named arguments**: inside `Listing({ ... })`, left of `:` only the fields still missing are suggested (inserted as `field: `); right of `:`, values of a compatible type come first, and a matching name before everything else (`nftAddress_` for `nftAddress`). Also for functions, events and errors called with `{...}`.
+- **Named arguments**: inside `Order({ ... })`, left of `:` only the fields still missing are suggested (inserted as `field: `); right of `:`, values of a compatible type come first, and a matching name before everything else (`amount` or `amount_` for the field `amount`). Also for functions, events and errors called with `{...}`.
 - **Expected types**: in `x = |`, `a == |`, `return |`, call arguments and initializers, values of the expected type come first, along with `msg.sender`, `block.timestamp` and similar when they fit.
-- **Members after `.`**: `msg`, `block`, `tx`, `abi`, `type(X)` (according to what X is), address members (`transfer` and `send` only on `address payable`), arrays, `bytes.concat` / `string.concat`; struct fields (`listing.price`, `listings[id].seller`, `getListing(id).seller`); the external functions and public getters of contract-typed values (`token.balanceOf`, `IERC20(addr).transfer`), inherited ones included; `this.`, `super.`, library, enum and user-defined value type members, and unit aliases (`import "x.sol" as X`).
+- **Members after `.`**: `msg`, `block`, `tx`, `abi`, `type(X)` (according to what X is), address members (`transfer` and `send` only on `address payable`), arrays, `bytes.concat` / `string.concat`; struct fields (`order.amount`, `orders[id].buyer`, `getOrder(id).buyer`); the external functions and public getters of contract-typed values (`token.balanceOf`, `IERC20(addr).transfer`), inherited ones included; `this.`, `super.`, library, enum and user-defined value type members, and unit aliases (`import "x.sol" as X`).
 - **Follows the solc version** chosen for the file (the same as compiler diagnostics, or the `pragma` when no solc is installed): `block.prevrandao` from 0.8.18, `block.blobbasefee` and `blobhash` from 0.8.24, `transient` from 0.8.28, and `transfer` / `send` shown as deprecated from 0.8.31.
 
 ```solidity
-function listNFT(address nftAddress_, uint256 tokenId_, uint256 price_) external {
-    Listing memory listing = Listing({
-        nftAddress: nftAddress_,
-        |               // sellerAddress, tokenId, price
+struct Order {
+    address buyer;
+    uint256 amount;
+    uint256 deadline;
+}
+
+function placeOrder(uint256 amount, uint256 deadline) external {
+    Order memory order = Order({
+        buyer: msg.sender,
+        |               // left of `:`: the missing fields, amount and deadline
     });
 }
 ```
+
+Right of `:` (`amount: |`), the parameter `amount` comes first: same name and same type.
 
 Typing `add` puts `address` first; suggestions in scope and from the language rank before auto-import ones (such as the `Address` library), and a name already in scope is never offered for import.
 
@@ -80,7 +88,7 @@ While you type, the file is checked with **solc**, unsaved changes included, a m
 - **Same filters as forge:** the project configuration comes from `forge config` (or `foundry.toml`), so `ignored_error_codes` (names or numbers, with forge's defaults) and `ignored_warnings_from` apply. Warnings from libraries are hidden. An error inside a library is shown on your file's first import, so it is not missed.
 - **Readable ranges:** when solc points at a whole contract or function, only its header is underlined.
 - Unknown identifiers that look like a misspelled keyword get a hint and a quick fix: `retruns` → *Did you mean `returns`?*.
-- A missing data location (`Listing listing = ...`, `string s` in a parameter) gets quick fixes for the locations solc allows: `calldata` first for external function parameters, `memory` elsewhere.
+- A missing data location (`Order order = ...`, `string s` in a parameter) gets quick fixes for the locations solc allows: `calldata` first for external function parameters, `memory` elsewhere.
 - These errors also drive the *Import X from ...* quick fix, without any other extension.
 - Only analysis is requested from solc (no bytecode), so a check takes tens of milliseconds even with large dependencies. A new keystroke cancels the check in progress.
 

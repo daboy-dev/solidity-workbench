@@ -12,12 +12,18 @@ The usual Solidity extensions highlight the syntax, but miss the basics you take
   contract Vault is Ownab|   // → Ownable, and import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
   ```
 
-- **Completion that understands the code**, even half-written: variables and members in scope (inherited ones too), types and keywords that fit where you are, members after `.` (`msg.sender`, `listing.price`, `token.balanceOf`), and the missing fields of a struct literal, with matching values first:
+- **Completion that understands the code**, even half-written: variables and members in scope (inherited ones too), types and keywords that fit where you are, members after `.` (`msg.sender`, `order.amount`, `token.balanceOf`), and the missing fields when you create a struct, with matching values first:
 
   ```solidity
-  Listing memory listing = Listing({
-      nftAddress: nftAddress_,
-      |                       // sellerAddress, tokenId, price
+  struct Order {
+      address buyer;
+      uint256 amount;
+      uint256 deadline;
+  }
+
+  Order memory order = Order({
+      buyer: msg.sender,
+      |                       // suggests the missing fields: amount, deadline
   });
   ```
 
