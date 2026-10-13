@@ -1,7 +1,7 @@
 import type { DocumentAnalysis } from "../solidity/analyzeDocument";
 import type { OutlineNode } from "../solidity/documentOutline";
 import { analyzeFile, type FileAnalysis, type ImportStatement } from "../solidity/fileAnalysis";
-import { isInCommentOrString } from "../solidity/lexContext";
+import { blankTrivia, isInCommentOrString } from "../solidity/lexContext";
 
 /** A Solidity file as seen by navigation: its text, outline and imports. */
 export interface SourceFile {
@@ -57,7 +57,9 @@ export async function findDefinitions(host: SourceHost, file: SourceFile, offset
   const resolver = new Resolver(host);
 
   const qualifiers = qualifiersBefore(file.text, word.start);
-  if (qualifiers === null) return [];
+  // `token.safeTransfer(...)`: the receiver is a value we cannot type, but the function may come
+  // from a library attached with `using ... for`.
+  if (qualifiers === null) return resolver.viaUsingFor(file, offset, word.name);
   if (qualifiers.length > 0) {
     const [head, ...rest] = qualifiers as [string, ...string[]];
     if (head === "super" || head === "this") {
@@ -69,6 +71,7 @@ export async function findDefinitions(host: SourceHost, file: SourceFile, offset
     }
     let owners = await resolver.resolveName(file, head, offset);
     for (const part of [...rest, word.name]) owners = await resolver.memberOf(owners, part);
+    if (owners.length === 0) return resolver.viaUsingFor(file, offset, word.name);
     return owners.map((f) => (f.node ? toTarget(f.file, f.node) : wholeFile(f.file)));
   }
 
@@ -93,6 +96,42 @@ class Resolver {
       if (members.length) return members;
     }
     return this.topLevelFound(file, name, new Set(), 0);
+  }
+
+  /**
+   * Functions attached with `using Lib for T;` or `using {f, Lib.g} for T;` in the enclosing
+   * contract or at file level (directives are not inherited by derived contracts).
+   */
+  async viaUsingFor(file: SourceFile, offset: number, name: string): Promise<DefinitionTarget[]> {
+    const contract = enclosingContract(file.analysis.outline, offset);
+    const clean = blankTrivia(file.text, file.imports.trivia);
+    // A directive applies when it is at file level, or inside the contract we are in.
+    const applies = (at: number) => {
+      const owner = enclosingContract(file.analysis.outline, at);
+      return owner === undefined || owner === contract;
+    };
+    const found: Found[] = [];
+    for (const m of clean.matchAll(/\busing\s+(\{[^}]*\}|[A-Za-z_$][\w$.]*)\s+for\b/g)) {
+      if (!applies(m.index ?? 0)) continue;
+      const target = m[1]!;
+      if (target.startsWith("{")) {
+        // `using {add, Lib.sub as -} for T`: only the listed functions are attached.
+        for (const item of target.slice(1, -1).split(",")) {
+          const fn = item.trim().split(/\s+as\s+/)[0]!.trim();
+          if (fn.split(".").at(-1) !== name) continue;
+          const parts = fn.split(".");
+          let owners = await this.resolveName(file, parts[0]!, offset);
+          for (const part of parts.slice(1)) owners = await this.memberOf(owners, part);
+          found.push(...owners);
+        }
+      } else {
+        const parts = target.split(".");
+        let owners = await this.resolveName(file, parts[0]!, offset);
+        for (const part of parts.slice(1)) owners = await this.memberOf(owners, part);
+        found.push(...(await this.memberOf(owners.filter((o) => o.node?.kind === "library"), name)));
+      }
+    }
+    return found.filter((f) => f.node).map((f) => toTarget(f.file, f.node!));
   }
 
   /** `name` looked up inside each owner: a file (unit alias), a contract, library, interface or enum. */

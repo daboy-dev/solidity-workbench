@@ -4,7 +4,14 @@
 
 Productivity tools for Solidity in VS Code, starting with Foundry projects. The goal is to make working with Solidity feel as comfortable as working with TypeScript.
 
-The first feature is **auto-import**: start typing the name of any contract, interface, library, struct, enum, error, event, user-defined value type, free function or file-level constant from your project or its dependencies, accept the suggestion, and the import is added for you.
+- **Auto-import**: complete any symbol of your project or its dependencies and the import is added for you.
+- **Diagnostics while you type**, without saving: readable syntax errors, and solc's errors and warnings filtered exactly like `forge build`.
+- **Navigation**: Go to Definition across files and inheritance, clickable imports, outline and workspace symbol search.
+- **Optional `forge fmt` formatting.**
+
+Every feature can be turned on or off on its own.
+
+Auto-import in action: start typing the name of any contract, interface, library, struct, enum, error, event, user-defined value type, free function or file-level constant, accept the suggestion, and the import is added:
 
 ```solidity
 contract Vault is Ownab|
@@ -36,7 +43,7 @@ contract Vault is Ownable
 
 ### Quick fix
 
-On an *undeclared identifier* diagnostic (solc errors 7576 and 7920, whichever extension reports them), the light bulb offers `Import X from "..."` for each matching file.
+On an *undeclared identifier* diagnostic (solc errors 7576 and 7920, from the built-in compiler diagnostics or from another extension), the light bulb offers `Import X from "..."` for each matching file.
 
 ### Add Solidity Import command
 
@@ -80,7 +87,8 @@ The Outline view, breadcrumbs and *Go to Symbol in Editor* (`Ctrl+Shift+O` / `Cm
 - **Go to Definition** (`F12`, `Ctrl/Cmd+click`) on:
   - names declared in the file or imported, following aliases (`import {A as B}`), plain imports (`import "x.sol"`) and re-exports across files;
   - members of the current contract and of the contracts it inherits from, in any file (`onlyOwner`, `_msgSender`, inherited errors and events), with `super.` and `this.`;
-  - qualified names: `Math.max` (every overload), `Errors.Unauthorized`, `Types.Side.Long`, `Alias.Symbol` for `import * as Alias`.
+  - qualified names: `Math.max` (every overload), `Errors.Unauthorized`, `Types.Side.Long`, `Alias.Symbol` for `import * as Alias`;
+  - library functions attached with `using SafeERC20 for IERC20;` or `using {f} for T;`, e.g. `token.safeTransfer(...)`.
 - **Import paths are links**: `Ctrl/Cmd+click` on `"@openzeppelin/contracts/access/Ownable.sol"` opens the file, resolved with the project's remappings.
 - **Go to Symbol in Workspace** (`Ctrl/Cmd+T`) searches the top-level symbols of every indexed project, dependencies included.
 
@@ -106,8 +114,10 @@ If the file has a syntax error, nothing is changed and the reason is shown in th
 From a `.vsix`:
 
 ```bash
-code --install-extension solidity-workbench-0.1.0.vsix
+code --install-extension solidity-workbench-0.2.0.vsix
 ```
+
+To update, install the new `.vsix` the same way (add `--force` to reinstall the same version) and run *Developer: Reload Window*. Settings are kept.
 
 From source:
 
@@ -116,7 +126,7 @@ npm install
 npm run package
 ```
 
-Requirements: VS Code 1.90 or newer. [Foundry](https://getfoundry.sh) is recommended but not required (see *Remappings* below).
+Requirements: VS Code 1.90 or newer. [Foundry](https://getfoundry.sh) is recommended: remappings work without it (see *Remappings* below), but compiler diagnostics use the solc binaries that forge installs.
 
 ### Working alongside other Solidity extensions
 
@@ -147,7 +157,20 @@ For each file, the remapping with the longest matching target is used and checke
 
 The index covers `src/`, `test/`, `script/`, the library folders and any remapping target in the project (e.g. `node_modules/@openzeppelin/...`). Files are parsed with `@solidity-parser/parser` in tolerant mode, with a regex fallback for files it cannot handle. Parsing happens in a pool of worker threads, so the editor stays responsive. Results are cached on disk by modification time, and kept up to date with file system watchers, including `forge install` and changes to `foundry.toml` or `remappings.txt`.
 
-As a reference, a synthetic project with 5,651 files (13 copies of OpenZeppelin Contracts) indexes in about 14 s cold and about 0.4 s from cache, without blocking the extension host. A completion query takes between 0.4 ms and 40 ms, depending on how much has been typed.
+### Performance
+
+Measured on a synthetic project with 5,651 files (13 copies of OpenZeppelin Contracts 5.6), with forge 1.8.5 and solc 0.8.37:
+
+| Operation | Time |
+| --- | --- |
+| Index, first time / from cache | ~14 s / ~0.4 s, in background threads |
+| Completion query | 0.4–40 ms, depending on how much has been typed |
+| Load project (`forge remappings` + `forge config`) | ~120 ms |
+| Syntax analysis + outline of an 800-line file | ~65 ms, in a background thread |
+| solc check of a contract importing ERC4626, AccessControl and Governor | ~40 ms (median) |
+| Go to Definition through OpenZeppelin's inheritance | under 1 ms once the files are parsed, under 100 ms the first time |
+
+The extension host is never blocked for more than a few milliseconds: parsing runs in worker threads and solc in its own process, and a check in progress is cancelled when you keep typing.
 
 ## Settings
 
@@ -179,7 +202,7 @@ Each feature has its own `solidityWorkbench.<feature>.enabled` setting; the `ind
 - Without forge, remappings are inferred with forge's main rules; unusual setups may differ. Install forge, or add a `remappings.txt`, for exact results.
 - Projects without `foundry.toml` (e.g. Hardhat-only) are indexed with Foundry's default layout, so `contracts/` and `node_modules` are only covered when a remapping points at them.
 - Compiler diagnostics need a solc installed by forge (svm) or set in `solidityWorkbench.compiler.solcPath`. `via_ir`, optimizer and other code generation settings are not applied, since only analysis runs.
-- Go to Definition does not resolve local variables, parameters, or members accessed through a value (`token.transfer`): that needs type information. Inherited members are searched in declaration order, without solc's exact linearization for diamond hierarchies.
+- Go to Definition does not resolve local variables, parameters, or members accessed through a value (`token.transfer`) unless they come from a `using ... for` library: that needs type information. Inherited members are searched in declaration order, without solc's exact linearization for diamond hierarchies.
 - Go to Symbol in Workspace lists top-level symbols only.
 - Syntax and compiler diagnostics may duplicate those of another Solidity extension. Turn off `solidityWorkbench.syntaxDiagnostics.enabled` / `solidityWorkbench.compilerDiagnostics.enabled`, or the equivalent in the other extension.
 - Another Solidity extension with its own completions or auto-import may conflict with this one and show a similar suggestion next to ours. Disable the feature in one of them if this is distracting.
@@ -197,10 +220,15 @@ npm run test:integration # @vscode/test-electron on test/fixtures/foundry-projec
 npm run package          # .vsix
 ```
 
-Press F5 with *Run Extension (fixture project)* to open the fixture in an Extension Development Host. `node test/bench/indexBench.mjs <projectRoot> . <out.cjs>` (after `npm run build`) benchmarks indexing on a large project.
+Press F5 with *Run Extension (fixture project)* to open the fixture in an Extension Development Host.
+
+Benchmarks on a large project (both use the real forge; the second also the installed solc):
+
+- Indexing: `npm run build && node test/bench/indexBench.mjs <projectRoot> . <out.cjs>`.
+- Language features: `npx esbuild test/bench/languageBench.ts --bundle --platform=node --outfile=<out.cjs> && node <out.cjs> <projectRoot>`.
 
 Layout:
 
-- `src/core/`: pure logic, with no `vscode` imports: the project model, remappings, the symbol extraction, the index, the cache, import edits and candidate ranking.
+- `src/core/`: pure logic, with no `vscode` imports: the project model and remappings, forge and solc integration, the symbol index and its cache, document analysis (syntax, outline), navigation, import edits and candidate ranking.
 - `src/host/`: the VS Code adapters of the core: settings, logging, project discovery, watchers.
 - `src/features/<feature>/`: one folder per feature, each registering itself through the `FeatureRegistry`: `autoImport`, `syntaxDiagnostics`, `compilerDiagnostics`, `outline`, `navigation`, `formatting`.

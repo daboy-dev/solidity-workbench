@@ -28,6 +28,25 @@ library Math {
 import {Ownable as BaseOwnable} from "./Ownable.sol";
 import "./Math.sol";
 `,
+  "/p/lib/SafeLib.sol": `pragma solidity ^0.8.20;
+library SafeLib {
+    function safeAdd(uint256 a, uint256 b) internal pure returns (uint256) { return a + b; }
+}
+function freeDouble(uint256 a) pure returns (uint256) { return a * 2; }
+`,
+  "/p/src/Using.sol": `pragma solidity ^0.8.20;
+import {SafeLib, freeDouble} from "../lib/SafeLib.sol";
+using {freeDouble} for uint256;
+
+contract UsesLib {
+    using SafeLib for uint256;
+    function f(uint256 x) external pure returns (uint256) { return x.safeAdd(1) + x.freeDouble() + x.missing(); }
+}
+
+contract NoUsing {
+    function g(uint256 x) external pure returns (uint256) { return x.safeAdd(1); }
+}
+`,
   "/p/src/Types.sol": `pragma solidity ^0.8.20;
 struct Position { uint256 amount; }
 enum Side { Long, Short }
@@ -120,5 +139,28 @@ describe("findDefinitions", () => {
     expect(await goTo("who);")).toEqual([]);
     expect(await goTo("Vault is")).toEqual(["Vault.sol:Vault@7"]);
     expect(await goTo("pragma")).toEqual([]);
+  });
+});
+
+describe("using for", () => {
+  async function goToIn(file: string, needle: string): Promise<string[]> {
+    const text = FILES[file]!;
+    const at = text.indexOf(needle);
+    expect(at, needle).toBeGreaterThanOrEqual(0);
+    const targets = await findDefinitions(host, (await host.load(file))!, at + 1);
+    return targets.map((t) => `${path.posix.basename(t.path)}:${t.text.slice(t.nameStart, t.nameEnd)}`);
+  }
+
+  it("resolves members attached with `using Lib for T` in the contract", async () => {
+    expect(await goToIn("/p/src/Using.sol", "safeAdd(1) +")).toEqual(["SafeLib.sol:safeAdd"]);
+  });
+
+  it("resolves functions attached with a file-level `using {f} for T`", async () => {
+    expect(await goToIn("/p/src/Using.sol", "freeDouble() +")).toEqual(["SafeLib.sol:freeDouble"]);
+  });
+
+  it("does not apply a contract's directive to another contract", async () => {
+    expect(await goToIn("/p/src/Using.sol", "safeAdd(1); }")).toEqual([]);
+    expect(await goToIn("/p/src/Using.sol", "missing()")).toEqual([]);
   });
 });
