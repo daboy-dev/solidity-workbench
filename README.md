@@ -43,6 +43,8 @@ Install **Solidity Workbench** from the Extensions view (`Ctrl+Shift+X` / `Cmd+S
 code --install-extension daboy-dev.solidity-workbench
 ```
 
+It is also on [Open VSX](https://open-vsx.org/extension/daboy-dev/solidity-workbench), for editors that use it instead of the Visual Studio Marketplace.
+
 Requirements: VS Code 1.90 or newer. [Foundry](https://getfoundry.sh) is recommended: compiler diagnostics use the solc binaries forge installs, and remappings are read from `forge remappings` (inferred like forge does when it is missing).
 
 ## Optional features

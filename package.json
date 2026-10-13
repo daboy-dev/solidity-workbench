@@ -34,8 +34,7 @@
     "completion",
     "intellisense",
     "diagnostics",
-    "solc",
-    "ethereum"
+    "solc"
   ],
   "main": "./dist/extension.js",
   "devDependencies": {
