@@ -38,12 +38,14 @@
     "@types/mocha": "^10.0.10",
     "@types/node": "^26.6.5",
     "@types/picomatch": "^4.0.3",
+    "@types/semver": "^7.8.0",
     "@types/vscode": "^1.90.0",
     "@vscode/test-electron": "^3.1.0",
     "@vscode/vsce": "^4.0.0",
     "esbuild": "^0.28.2",
     "mocha": "^12.0.3",
     "picomatch": "^4.0.7",
+    "semver": "^7.8.5",
     "smol-toml": "^1.9.1",
     "typescript": "^7.0.2",
     "vitest": "^5.0.3"
@@ -155,7 +157,7 @@
       },
       {
         "title": "Outline",
-        "order": 4,
+        "order": 6,
         "properties": {
           "solidityWorkbench.outline.enabled": {
             "type": "boolean",
@@ -166,7 +168,7 @@
       },
       {
         "title": "Navigation",
-        "order": 5,
+        "order": 7,
         "properties": {
           "solidityWorkbench.navigation.enabled": {
             "type": "boolean",
@@ -177,12 +179,52 @@
       },
       {
         "title": "Formatting",
-        "order": 6,
+        "order": 8,
         "properties": {
           "solidityWorkbench.formatting.enabled": {
             "type": "boolean",
             "default": false,
             "markdownDescription": "Format Solidity files with `forge fmt`, using the `[fmt]` section of `foundry.toml`. Off by default: enable it and pick Solidity Workbench as the formatter (`editor.defaultFormatter`) if you want Format Document or format on save to use it."
+          }
+        }
+      },
+      {
+        "title": "Compiler Diagnostics",
+        "order": 4,
+        "properties": {
+          "solidityWorkbench.compilerDiagnostics.enabled": {
+            "type": "boolean",
+            "default": true,
+            "markdownDescription": "Check Solidity files with solc while typing, including unsaved changes: type errors, missing constructor arguments, unknown identifiers, warnings... Results are filtered like `forge build` (`ignored_error_codes`, `ignored_warnings_from`, nothing from libraries). May conflict with diagnostics from other Solidity extensions."
+          },
+          "solidityWorkbench.compilerDiagnostics.delay": {
+            "type": "number",
+            "default": 400,
+            "minimum": 0,
+            "markdownDescription": "Milliseconds to wait after the last keystroke before running solc."
+          },
+          "solidityWorkbench.compilerDiagnostics.ignoredCodes": {
+            "type": "array",
+            "items": {
+              "type": [
+                "string",
+                "number"
+              ]
+            },
+            "default": [],
+            "markdownDescription": "Extra solc warning codes to hide, as numbers (`2072`) or foundry names (`\"unused-var\"`). Added to `ignored_error_codes` from `foundry.toml`. Errors are never hidden."
+          }
+        }
+      },
+      {
+        "title": "Compiler",
+        "order": 5,
+        "properties": {
+          "solidityWorkbench.compiler.solcPath": {
+            "type": "string",
+            "default": "",
+            "scope": "machine-overridable",
+            "markdownDescription": "solc to use instead of the automatic choice: a path to a binary, or a version installed by forge (`0.8.30`). By default the `solc` of `foundry.toml`, or the newest installed version that satisfies the file's `pragma`, is used."
           }
         }
       }

@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Syntax diagnostics while typing: misspelled keywords (with a quick fix), unbalanced brackets pointing at the block left open, readable parser errors.
+- Compiler diagnostics while typing with the solc installed by forge, on unsaved changes, filtered like `forge build`; keyword hints for misspelled identifiers.
 - Document outline for Solidity files.
 - Go to Definition across files (imports, aliases, inheritance, `Library.member`), clickable import paths and Go to Symbol in Workspace.
 - Optional formatter backed by `forge fmt` (off by default).

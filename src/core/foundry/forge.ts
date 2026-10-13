@@ -1,31 +1,13 @@
-import { execFile } from "node:child_process";
 import * as path from "node:path";
+import { runProcess } from "../process";
 
 /** Runs a command and resolves with stdout; rejects on a non-zero exit. */
 export type ExecFn = (command: string, args: readonly string[], cwd: string, input?: string) => Promise<string>;
 
 export type Env = Readonly<Record<string, string | undefined>>;
 
-const DEFAULT_TIMEOUT_MS = 15_000;
-
 export const defaultExec: ExecFn = (command, args, cwd, input) =>
-  new Promise((resolve, reject) => {
-    const child = execFile(
-      command,
-      [...args],
-      { cwd, timeout: DEFAULT_TIMEOUT_MS, maxBuffer: 32 * 1024 * 1024 },
-      (err, stdout, stderr) => {
-        if (err) reject(Object.assign(err, { stderr: String(stderr) }));
-        else resolve(stdout);
-      },
-    );
-    // Write only once the process exists: writing to a command that failed to start (ENOENT)
-    // raises SIGPIPE in the host. An early exit can still close the pipe; the exit code is what
-    // gets reported, so the stdin error itself is ignored.
-    child.stdin?.on("error", () => {});
-    if (input !== undefined) child.once("spawn", () => child.stdin?.end(input));
-    else child.stdin?.end();
-  });
+  runProcess(command, args, { cwd, ...(input !== undefined ? { input } : {}) });
 
 /**
  * Where to look for forge. foundryup installs it in ~/.foundry/bin and adds

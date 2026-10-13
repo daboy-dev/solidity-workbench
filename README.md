@@ -58,7 +58,18 @@ Syntax errors are reported as you type, without saving, with messages meant for 
 - A forgotten `}` in the middle of a file → *Missing `}` to close `function deposit` (opened on line 12)*. Indentation is used to find the block that was really left open, not just the last one.
 - Extra or mismatched brackets, and the first parser error (*Missing `;`*, *Unexpected `)`*...). Errors that only follow from an earlier one are not repeated.
 
-Analysis runs in a background thread. Type errors, unknown names and other compiler checks are not part of this layer.
+Analysis runs in a background thread. Type errors, unknown names and other semantic checks come from the compiler (below).
+
+### Compiler diagnostics
+
+While you type, the file is checked with **solc**, unsaved changes included, a moment after you stop typing (`solidityWorkbench.compilerDiagnostics.delay`, 400 ms). You see the same errors and warnings as with `forge build`: missing constructor arguments, type mismatches, undeclared identifiers, unused variables, shadowing...
+
+- **solc version:** the `solc` of `foundry.toml` if set, else the newest installed version that satisfies the file's `pragma` (and those of its imports). The binaries installed by forge are used; the extension downloads nothing. If no installed version fits, you are offered to run `forge build` once, which installs it. The status bar shows the version in use.
+- **Same filters as forge:** the project configuration comes from `forge config` (or `foundry.toml`), so `ignored_error_codes` (names or numbers, with forge's defaults) and `ignored_warnings_from` apply. Warnings from libraries are hidden. An error inside a library is shown on your file's first import, so it is not missed.
+- **Readable ranges:** when solc points at a whole contract or function, only its header is underlined.
+- Unknown identifiers that look like a misspelled keyword get a hint and a quick fix: `retruns` → *Did you mean `returns`?*.
+- These errors also drive the *Import X from ...* quick fix, without any other extension.
+- Only analysis is requested from solc (no bytecode), so a check takes tens of milliseconds even with large dependencies. A new keystroke cancels the check in progress.
 
 ### Outline
 
@@ -145,6 +156,10 @@ As a reference, a synthetic project with 5,651 files (13 copies of OpenZeppelin 
 | `solidityWorkbench.autoImport.enabled` | `true` | Enables the auto-import feature (completions, quick fix, command). |
 | `solidityWorkbench.autoImport.pathStyle` | `"remapped"` | `remapped`: use a remapping when one covers the file, else a relative path. `relative`: always relative paths. |
 | `solidityWorkbench.syntaxDiagnostics.enabled` | `true` | Report syntax errors while typing. |
+| `solidityWorkbench.compilerDiagnostics.enabled` | `true` | Check files with solc while typing. |
+| `solidityWorkbench.compilerDiagnostics.delay` | `400` | Milliseconds after the last keystroke before running solc. |
+| `solidityWorkbench.compilerDiagnostics.ignoredCodes` | `[]` | Extra warning codes to hide (`2072` or `"unused-var"`), added to `ignored_error_codes`. |
+| `solidityWorkbench.compiler.solcPath` | `""` | solc binary path or installed version to use instead of the automatic choice. |
 | `solidityWorkbench.outline.enabled` | `true` | Provide the document outline. |
 | `solidityWorkbench.navigation.enabled` | `true` | Go to Definition, clickable import paths and Go to Symbol in Workspace. |
 | `solidityWorkbench.formatting.enabled` | `false` | Format with `forge fmt`. |
@@ -163,10 +178,10 @@ Each feature has its own `solidityWorkbench.<feature>.enabled` setting; the `ind
 - `import "x.sol";` puts every symbol of `x.sol` in scope and those are not suggested again. Symbols that `x.sol` itself imports, which solc also brings into scope, may still be suggested.
 - Without forge, remappings are inferred with forge's main rules; unusual setups may differ. Install forge, or add a `remappings.txt`, for exact results.
 - Projects without `foundry.toml` (e.g. Hardhat-only) are indexed with Foundry's default layout, so `contracts/` and `node_modules` are only covered when a remapping points at them.
-- The import quick fix needs another extension that reports solc diagnostics; on its own, Solidity Workbench does not compile yet.
+- Compiler diagnostics need a solc installed by forge (svm) or set in `solidityWorkbench.compiler.solcPath`. `via_ir`, optimizer and other code generation settings are not applied, since only analysis runs.
 - Go to Definition does not resolve local variables, parameters, or members accessed through a value (`token.transfer`): that needs type information. Inherited members are searched in declaration order, without solc's exact linearization for diamond hierarchies.
 - Go to Symbol in Workspace lists top-level symbols only.
-- Syntax diagnostics may duplicate those of another Solidity extension. Turn off `solidityWorkbench.syntaxDiagnostics.enabled`, or the equivalent in the other extension.
+- Syntax and compiler diagnostics may duplicate those of another Solidity extension. Turn off `solidityWorkbench.syntaxDiagnostics.enabled` / `solidityWorkbench.compilerDiagnostics.enabled`, or the equivalent in the other extension.
 - Another Solidity extension with its own completions or auto-import may conflict with this one and show a similar suggestion next to ours. Disable the feature in one of them if this is distracting.
 - Without any Solidity extension, the workbench starts when the workspace contains a `.sol` file or a `foundry.toml`. A loose `.sol` file opened outside any workspace does not activate it.
 - Deleting a folder other than a library may leave its symbols in the index until the next reload or `Rebuild Symbol Index`, depending on how the file watcher reports the deletion on your platform.
@@ -188,4 +203,4 @@ Layout:
 
 - `src/core/`: pure logic, with no `vscode` imports: the project model, remappings, the symbol extraction, the index, the cache, import edits and candidate ranking.
 - `src/host/`: the VS Code adapters of the core: settings, logging, project discovery, watchers.
-- `src/features/<feature>/`: one folder per feature, each registering itself through the `FeatureRegistry`: `autoImport`, `syntaxDiagnostics`, `outline`, `navigation`, `formatting`.
+- `src/features/<feature>/`: one folder per feature, each registering itself through the `FeatureRegistry`: `autoImport`, `syntaxDiagnostics`, `compilerDiagnostics`, `outline`, `navigation`, `formatting`.

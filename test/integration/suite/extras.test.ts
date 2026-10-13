@@ -79,7 +79,8 @@ suite("Auto import extras", () => {
   });
 
   test("quick fix ignores unrelated diagnostics", async () => {
-    const editor = await open("src/Other.sol", "pragma solidity ^0.8.20;\n\ncontract Other is Ownable {}\n");
+    // Valid code (no real undeclared identifier), with an unrelated diagnostic on a name that exists in the index.
+    const editor = await open("src/Other.sol", "pragma solidity ^0.8.20;\n\ncontract Other { uint256 Ownable; }\n");
     const doc = editor.document;
     const range = rangeOf(doc, "Ownable");
     diagnostics.set(doc.uri, [new vscode.Diagnostic(range, "Unused variable.", vscode.DiagnosticSeverity.Warning)]);

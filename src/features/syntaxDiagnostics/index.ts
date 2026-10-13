@@ -81,12 +81,12 @@ function toDiagnostic(document: vscode.TextDocument, problem: SyntaxProblem): vs
   return diagnostic;
 }
 
-/** "Change to `contract`" for misspelled keywords. */
+/** "Change to `contract`" for misspelled keywords, from the syntax layer or from solc (`retruns`). */
 class KeywordTypoFixProvider implements vscode.CodeActionProvider {
   provideCodeActions(document: vscode.TextDocument, _range: vscode.Range, context: vscode.CodeActionContext): vscode.CodeAction[] {
     const actions: vscode.CodeAction[] = [];
     for (const diagnostic of context.diagnostics) {
-      if (diagnostic.source !== DIAGNOSTIC_SOURCE || diagnostic.code !== "keyword-typo") continue;
+      if (diagnostic.source !== DIAGNOSTIC_SOURCE && diagnostic.source !== "solc") continue;
       const keyword = TYPO_FIX.exec(diagnostic.message)?.[1];
       if (!keyword) continue;
       const action = new vscode.CodeAction(`Change to \`${keyword}\``, vscode.CodeActionKind.QuickFix);

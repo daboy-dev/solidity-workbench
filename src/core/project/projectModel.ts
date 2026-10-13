@@ -1,5 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { compilerSettingsFromForge, compilerSettingsFromToml, type CompilerSettings } from "../compiler/compilerSettings";
 import { DEFAULT_FOUNDRY_CONFIG, parseFoundryConfig, type FoundryConfig } from "./foundryConfig";
 import { loadRemappings, type RemappingOrigin, type RemappingSourceOptions } from "./remappingSource";
 import { resolveImport, toImportPath, toPosix, toSourceUnitName, type ImportPathResult, type Remapping } from "./remappings";
@@ -16,6 +17,7 @@ export class ProjectModel {
     readonly hasFoundryToml: boolean,
     /** The forge executable used, or why it could not be used. */
     readonly forgeStatus: string = "",
+    readonly compiler: CompilerSettings = compilerSettingsFromToml(""),
   ) {}
 
   sourceUnitName(absPath: string): string {
@@ -98,7 +100,21 @@ export async function loadProject(root: string, options: RemappingSourceOptions 
   const config = hasFoundryToml ? await readConfig(root) : DEFAULT_FOUNDRY_CONFIG;
   const loaded = await loadRemappings(root, config, options);
   const forgeStatus = loaded.forge ?? (loaded.forgeError !== undefined ? `forge unavailable: ${loaded.forgeError}` : "");
-  return new ProjectModel(root, config, loaded.remappings, loaded.origin, hasFoundryToml, forgeStatus);
+  const compiler = await loadCompilerSettings(root, hasFoundryToml, loaded.origin === "forge" ? { ...options, forgePath: loaded.forge! } : undefined);
+  return new ProjectModel(root, config, loaded.remappings, loaded.origin, hasFoundryToml, forgeStatus, compiler);
+}
+
+/** Uses `forge config --json` when forge works for this project, else reads foundry.toml. */
+async function loadCompilerSettings(root: string, hasFoundryToml: boolean, forge: RemappingSourceOptions | undefined): Promise<CompilerSettings> {
+  if (forge && hasFoundryToml) {
+    try {
+      return await compilerSettingsFromForge(root, forge);
+    } catch {
+      // Fall back to reading the file.
+    }
+  }
+  const text = hasFoundryToml ? await fs.readFile(path.join(root, FOUNDRY_TOML), "utf8").catch(() => "") : "";
+  return compilerSettingsFromToml(text, process.env["FOUNDRY_PROFILE"] || "default");
 }
 
 async function exists(p: string): Promise<boolean> {

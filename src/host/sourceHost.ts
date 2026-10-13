@@ -32,7 +32,14 @@ export async function documentSource(core: WorkbenchCore, document: vscode.TextD
 
 /** Converts an offset of `text` (not necessarily an open document) to a position. */
 export function positionIn(text: string, offset: number): vscode.Position {
+  return positionConverter(text)(offset);
+}
+
+/** Offset-to-position conversion for many offsets of the same text. */
+export function positionConverter(text: string): (offset: number) => vscode.Position {
   const starts = computeLineStarts(text);
-  const line = lineOf(starts, offset);
-  return new vscode.Position(line, offset - starts[line]!);
+  return (offset) => {
+    const line = lineOf(starts, offset);
+    return new vscode.Position(line, offset - starts[line]!);
+  };
 }
