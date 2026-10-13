@@ -23,6 +23,32 @@ async function openAtMarker(relPath: string, content: string): Promise<{ editor:
   return { editor, position: editor.document.positionAt(offset) };
 }
 
+async function waitFor<T>(get: () => T | undefined | false, timeoutMs = 10_000): Promise<T> {
+  const start = Date.now();
+  for (;;) {
+    const value = get();
+    if (value !== undefined && value !== false) return value;
+    if (Date.now() - start > timeoutMs) throw new Error("Timed out waiting for condition");
+    await new Promise((r) => setTimeout(r, 50));
+  }
+}
+
+/**
+ * Accepts the first item of the suggest widget, as a user would. The widget opens
+ * asynchronously and accepting before it is visible does nothing, so retry until the text changes.
+ */
+async function acceptFirstSuggestion(editor: vscode.TextEditor, position: vscode.Position): Promise<void> {
+  const before = editor.document.getText();
+  editor.selection = new vscode.Selection(position, position);
+  const deadline = Date.now() + 10_000;
+  while (editor.document.getText() === before && Date.now() < deadline) {
+    await vscode.commands.executeCommand("editor.action.triggerSuggest");
+    await new Promise((r) => setTimeout(r, 500));
+    await vscode.commands.executeCommand("acceptSelectedSuggestion");
+    await new Promise((r) => setTimeout(r, 100));
+  }
+}
+
 function labelOf(item: vscode.CompletionItem): string {
   return typeof item.label === "string" ? item.label : item.label.label;
 }
@@ -66,5 +92,34 @@ suite("Language completion", () => {
     assert.deepEqual(transfer?.tags, [vscode.CompletionItemTag.Deprecated]);
     labels = items.map(labelOf);
     assert.ok(labels.includes("balance") && labels.includes("call"));
+  });
+
+  test("`add` + accept inserts `address`, before the `Address` library offered by auto-import", async () => {
+    const lib = vscode.Uri.file(path.join(WORKSPACE, "src/AddressLib.sol"));
+    await vscode.workspace.fs.writeFile(lib, Buffer.from("pragma solidity ^0.8.20;\nlibrary Address {}\n"));
+    const project = (await api.core.projectFor(lib))!;
+    await waitFor(() => project.index.lookup("Address").length > 0);
+
+    const { editor, position } = await openAtMarker("src/Typed.sol", body("^0.8.20", "add|"));
+    const labels = (await completions(editor.document, position)).map(labelOf);
+    assert.ok(labels.includes("Address"), "the auto-import candidate is offered too");
+    await acceptFirstSuggestion(editor, position);
+    assert.match(editor.document.getText(), /^ {8}address$/m);
+    assert.ok(!editor.document.getText().includes("import"), "no import was added");
+  });
+
+  test("can be disabled from the settings", async () => {
+    const config = vscode.workspace.getConfiguration("solidityWorkbench");
+    await config.update("completion.enabled", false, vscode.ConfigurationTarget.Workspace);
+    try {
+      await waitFor(() => !api.isFeatureActive("completion"));
+      const { editor, position } = await openAtMarker("src/NoCompletion.sol", body("^0.8.20", "msg.|"));
+      // VS Code's word-based suggestions may still list words of the document.
+      const labels = (await completions(editor.document, position, ".")).map(labelOf);
+      assert.ok(!labels.includes("sender"), `got: ${labels.join(", ")}`);
+    } finally {
+      await config.update("completion.enabled", undefined, vscode.ConfigurationTarget.Workspace);
+      await waitFor(() => api.isFeatureActive("completion"));
+    }
   });
 });

@@ -14,7 +14,20 @@ import {
   type Builtin,
 } from "./builtins";
 import type { CursorContext } from "./cursorContext";
-import { builtinTypeOf, elementaryTypeInfo, staticMembers, valueMembers, type ExprType } from "./types";
+import {
+  availableKeywords,
+  CONTRACT_KEYWORDS,
+  DATA_LOCATION_KEYWORDS,
+  EXPRESSION_KEYWORDS,
+  FILE_KEYWORDS,
+  functionAttributes,
+  MAPPING,
+  STATEMENT_KEYWORDS,
+  stateAttributes,
+  type Keyword,
+} from "./keywords";
+import { DATA_LOCATIONS } from "./structure";
+import { builtinTypeOf, elementaryTypeInfo, ELEMENTARY_TYPES, isReferenceType, staticMembers, valueMembers, type ExprType } from "./types";
 
 export type EntryKind =
   | "keyword"
@@ -81,6 +94,20 @@ class Entries {
     this.list.push(entry);
   }
 
+  keywords(list: readonly Keyword[], env: CompletionEnv): void {
+    for (const k of availableKeywords(list, env.version)) {
+      this.add({ label: k.label, kind: "keyword", rank: RANK.keyword, ...(k.detail ? { detail: k.detail } : {}), ...(k.snippet ? { snippet: k.snippet } : {}) });
+    }
+  }
+
+  /** Elementary types; `address payable` only where a type is declared (not in conversions). */
+  types(options: { payable: boolean }): void {
+    for (const t of ELEMENTARY_TYPES) {
+      this.add({ label: t, kind: "type", rank: RANK.keyword });
+      if (t === "address" && options.payable) this.add({ label: "address payable", kind: "type", rank: RANK.keyword });
+    }
+  }
+
   builtins(list: readonly Builtin[], env: CompletionEnv, rank: number, asMember: boolean): void {
     for (const b of list) {
       if (!isAvailable(b, env.version)) continue;
@@ -102,6 +129,8 @@ export async function complete(ctx: CursorContext, env: CompletionEnv): Promise<
   const out = new Entries();
   const site = ctx.site;
   switch (site.kind) {
+    case "none":
+      break;
     case "member": {
       const type = builtinTypeOf(site.receiver);
       if (type) memberEntries(out, type, env);
@@ -110,15 +139,72 @@ export async function complete(ctx: CursorContext, env: CompletionEnv): Promise<
     case "unit":
       for (const b of UNITS) out.add({ ...builtinEntry(b, env, RANK.keyword, false), kind: "unit" });
       break;
+    case "fileLevel":
+      out.keywords(FILE_KEYWORDS, env);
+      out.types({ payable: true });
+      break;
+    case "afterAbstract":
+      out.keywords([{ label: "contract" }], env);
+      break;
+    case "contractLevel":
+      out.keywords(CONTRACT_KEYWORDS, env);
+      out.keywords([MAPPING], env);
+      out.types({ payable: true });
+      break;
+    case "structField":
+      out.keywords([MAPPING], env);
+      out.types({ payable: true });
+      break;
+    case "afterType":
+      afterType(out, site, env);
+      break;
+    case "functionAttributes":
+      out.keywords(functionAttributes(site.callable, site.used, ctx.contract !== undefined), env);
+      break;
+    case "typeName":
+      if (site.purpose === "using" || site.purpose === "inheritance" || site.purpose === "override") break;
+      if (site.purpose === "param" || site.purpose === "mapping") out.keywords([MAPPING], env);
+      out.types({ payable: site.purpose !== "new" && site.purpose !== "udvt" });
+      break;
     case "statement":
-    case "expression":
-      if (site.kind === "expression" && site.keyword) break;
+      out.keywords(STATEMENT_KEYWORDS, env);
+      out.types({ payable: true });
+      out.keywords([MAPPING], env);
+      out.keywords(EXPRESSION_KEYWORDS, env);
       globalEntries(out, env);
       break;
-    default:
+    case "expression":
+      if (site.keyword) break;
+      out.types({ payable: false });
+      out.keywords(EXPRESSION_KEYWORDS, env);
+      globalEntries(out, env);
+      break;
+    case "callOption":
+      for (const option of ["value", "gas"]) {
+        if (!site.given.includes(option)) out.add({ label: option, kind: "property", detail: "uint256", rank: RANK.member });
+      }
+      break;
+    case "namedArgName":
       break;
   }
   return out.list;
+}
+
+function afterType(out: Entries, site: Extract<CursorContext["site"], { kind: "afterType" }>, env: CompletionEnv): void {
+  if (site.type === "address" && site.used.length === 0) out.keywords([{ label: "payable" }], env);
+  switch (site.where) {
+    case "state":
+    case "file":
+      out.keywords(stateAttributes(site.used, site.where === "file"), env);
+      return;
+    case "eventParam":
+      if (!site.used.includes("indexed")) out.keywords([{ label: "indexed" }], env);
+      return;
+    case "local":
+    case "param":
+      if (isReferenceType(site.type) && !site.used.some((u) => DATA_LOCATIONS.has(u))) out.keywords(DATA_LOCATION_KEYWORDS, env);
+      return;
+  }
 }
 
 function globalEntries(out: Entries, env: CompletionEnv): void {

@@ -48,8 +48,9 @@ export class AutoImportCompletionProvider implements vscode.CompletionItemProvid
       item.insertText = c.name;
       item.filterText = c.name;
       item.range = { inserting, replacing };
-      // Ties on the fuzzy score are broken by name, then by our ranking of alternative paths.
-      item.sortText = `${c.name}\u0000${String(c.rank).padStart(8, "0")}`;
+      // Ties on the fuzzy score are broken by name, then by our ranking of alternative paths. The
+      // leading 9 lists them after language completions (types, scope, globals) on equal scores.
+      item.sortText = `9${c.name}\u0000${String(c.rank).padStart(8, "0")}`;
       const edit = ctx.importEdit(c);
       if (edit) item.additionalTextEdits = [edit];
       items.push(item);
