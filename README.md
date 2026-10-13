@@ -4,6 +4,7 @@
 
 Productivity tools for Solidity in VS Code, starting with Foundry projects. The goal is to make working with Solidity feel as comfortable as working with TypeScript.
 
+- **Language completion**: types and keywords that fit where you are, variables and members in scope (inherited ones too), struct fields in `S({...})`, members after `.` (`msg.sender`, `listing.price`, `token.transfer`) and global functions, following the file's solc version.
 - **Auto-import**: complete any symbol of your project or its dependencies and the import is added for you.
 - **Diagnostics while you type**, without saving: readable syntax errors, and solc's errors and warnings filtered exactly like `forge build`.
 - **Navigation**: Go to Definition across files and inheritance, clickable imports, outline and workspace symbol search.
@@ -27,6 +28,28 @@ contract Vault is Ownable
 ```
 
 ## Features
+
+### Language completion
+
+Suggestions for the code you are writing, also when it is half-written (unclosed blocks, missing semicolons, trailing commas):
+
+- **Types and keywords for the context**: `address`, `bool`, `string`, `bytes`, `bytes1`…`bytes32`, `uint8`…`uint256`, `int8`…`int256`, `mapping` (as a snippet); `memory` / `storage` / `calldata` after reference types; `public`, `constant`, `immutable`, `transient`… after the type of a state variable; visibility, mutability, `virtual`, `override`, `returns` and the modifiers in scope in function headers, never repeating or contradicting what is already written; `indexed` in events; statement keywords (`if`, `for`, `emit`, `revert`, `unchecked`…) only inside bodies; units (`ether`, `days`…) after a number.
+- **Values in scope**: parameters, local variables (respecting block scoping), state variables, constants and functions of the contract and of the contracts it inherits from, in any file (private members of bases excluded), and names declared or imported at file level. Events are suggested after `emit`, errors after `revert`.
+- **Named arguments**: inside `Listing({ ... })`, left of `:` only the fields still missing are suggested (inserted as `field: `); right of `:`, values of a compatible type come first, and a matching name before everything else (`nftAddress_` for `nftAddress`). Also for functions, events and errors called with `{...}`.
+- **Expected types**: in `x = |`, `a == |`, `return |`, call arguments and initializers, values of the expected type come first, along with `msg.sender`, `block.timestamp` and similar when they fit.
+- **Members after `.`**: `msg`, `block`, `tx`, `abi`, `type(X)` (according to what X is), address members (`transfer` and `send` only on `address payable`), arrays, `bytes.concat` / `string.concat`; struct fields (`listing.price`, `listings[id].seller`, `getListing(id).seller`); the external functions and public getters of contract-typed values (`token.balanceOf`, `IERC20(addr).transfer`), inherited ones included; `this.`, `super.`, library, enum and user-defined value type members, and unit aliases (`import "x.sol" as X`).
+- **Follows the solc version** chosen for the file (the same as compiler diagnostics, or the `pragma` when no solc is installed): `block.prevrandao` from 0.8.18, `block.blobbasefee` and `blobhash` from 0.8.24, `transient` from 0.8.28, and `transfer` / `send` shown as deprecated from 0.8.31.
+
+```solidity
+function listNFT(address nftAddress_, uint256 tokenId_, uint256 price_) external {
+    Listing memory listing = Listing({
+        nftAddress: nftAddress_,
+        |               // sellerAddress, tokenId, price
+    });
+}
+```
+
+Typing `add` puts `address` first; suggestions in scope and from the language rank before auto-import ones (such as the `Address` library), and a name already in scope is never offered for import.
 
 ### Auto-import in completions
 
@@ -63,6 +86,7 @@ Syntax errors are reported as you type, without saving, with messages meant for 
 
 - `contact Vault {}` → *Unknown keyword `contact`. Did you mean `contract`?*, with a quick fix. Misspelled declaration keywords are only reported where the code could never be valid, so a type named `Contact` is never flagged.
 - A forgotten `}` in the middle of a file → *Missing `}` to close `function deposit` (opened on line 12)*. Indentation is used to find the block that was really left open, not just the last one.
+- Trailing commas in argument and parameter lists, struct literals, enums and imports → *Trailing comma before `}` is not allowed*, with a quick fix to remove it. Empty tuple components such as `(bool ok, ) = ...` are valid and not reported.
 - Extra or mismatched brackets, and the first parser error (*Missing `;`*, *Unexpected `)`*...). Errors that only follow from an earlier one are not repeated.
 
 Analysis runs in a background thread. Type errors, unknown names and other semantic checks come from the compiler (below).
@@ -75,6 +99,7 @@ While you type, the file is checked with **solc**, unsaved changes included, a m
 - **Same filters as forge:** the project configuration comes from `forge config` (or `foundry.toml`), so `ignored_error_codes` (names or numbers, with forge's defaults) and `ignored_warnings_from` apply. Warnings from libraries are hidden. An error inside a library is shown on your file's first import, so it is not missed.
 - **Readable ranges:** when solc points at a whole contract or function, only its header is underlined.
 - Unknown identifiers that look like a misspelled keyword get a hint and a quick fix: `retruns` → *Did you mean `returns`?*.
+- A missing data location (`Listing listing = ...`, `string s` in a parameter) gets quick fixes for the locations solc allows: `calldata` first for external function parameters, `memory` elsewhere.
 - These errors also drive the *Import X from ...* quick fix, without any other extension.
 - Only analysis is requested from solc (no bytecode), so a check takes tens of milliseconds even with large dependencies. A new keystroke cancels the check in progress.
 
@@ -114,7 +139,7 @@ If the file has a syntax error, nothing is changed and the reason is shown in th
 From a `.vsix`:
 
 ```bash
-code --install-extension solidity-workbench-0.2.0.vsix
+code --install-extension solidity-workbench-0.3.0.vsix
 ```
 
 To update, install the new `.vsix` the same way (add `--force` to reinstall the same version) and run *Developer: Reload Window*. Settings are kept.
@@ -164,18 +189,20 @@ Measured on a synthetic project with 5,651 files (13 copies of OpenZeppelin Cont
 | Operation | Time |
 | --- | --- |
 | Index, first time / from cache | ~14 s / ~0.4 s, in background threads |
-| Completion query | 0.4–40 ms, depending on how much has been typed |
+| Auto-import completion query | 0.4–40 ms, depending on how much has been typed |
+| Language completion (scope, members, inherited functions) | ~1 ms; the first request parses the files it inherits from (~17 ms for ERC4626 + AccessControl, 41 files) |
 | Load project (`forge remappings` + `forge config`) | ~120 ms |
 | Syntax analysis + outline of an 800-line file | ~65 ms, in a background thread |
 | solc check of a contract importing ERC4626, AccessControl and Governor | ~40 ms (median) |
 | Go to Definition through OpenZeppelin's inheritance | under 1 ms once the files are parsed, under 100 ms the first time |
 
-The extension host is never blocked for more than a few milliseconds: parsing runs in worker threads and solc in its own process, and a check in progress is cancelled when you keep typing.
+The extension host is never blocked for more than a few milliseconds: parsing runs in worker threads and solc in its own process, and a check in progress is cancelled when you keep typing. Language completion uses its own tolerant parser, linear and fast enough to run in place (2 ms for an 800-line file), and caches what it parses by document version and modification time.
 
 ## Settings
 
 | Setting | Default | Description |
 | --- | --- | --- |
+| `solidityWorkbench.completion.enabled` | `true` | Suggest types, keywords, values in scope, struct fields, members after `.` and globals. |
 | `solidityWorkbench.autoImport.enabled` | `true` | Enables the auto-import feature (completions, quick fix, command). |
 | `solidityWorkbench.autoImport.pathStyle` | `"remapped"` | `remapped`: use a remapping when one covers the file, else a relative path. `relative`: always relative paths. |
 | `solidityWorkbench.syntaxDiagnostics.enabled` | `true` | Report syntax errors while typing. |
@@ -196,7 +223,8 @@ Each feature has its own `solidityWorkbench.<feature>.enabled` setting; the `ind
 
 ## Known limitations
 
-- Only top-level declarations are indexed. Members such as `Contract.Struct` or `Library.function` are not suggested on their own.
+- Auto-import offers top-level declarations only. Members such as `Library.function` are completed after `Library.` once the library is imported.
+- Language completion does not suggest library functions attached with `using ... for` after a value (`token.safeTransfer`), nor Yul inside `assembly` blocks. Calls are typed by their declared return when it is a single value; with overloads, the first one is used to rank arguments.
 - The index reflects files on disk: symbols added to another file appear once it is saved.
 - `import "x.sol";` puts every symbol of `x.sol` in scope and those are not suggested again. Symbols that `x.sol` itself imports, which solc also brings into scope, may still be suggested.
 - Without forge, remappings are inferred with forge's main rules; unusual setups may differ. Install forge, or add a `remappings.txt`, for exact results.
@@ -205,7 +233,7 @@ Each feature has its own `solidityWorkbench.<feature>.enabled` setting; the `ind
 - Go to Definition does not resolve local variables, parameters, or members accessed through a value (`token.transfer`) unless they come from a `using ... for` library: that needs type information. Inherited members are searched in declaration order, without solc's exact linearization for diamond hierarchies.
 - Go to Symbol in Workspace lists top-level symbols only.
 - Syntax and compiler diagnostics may duplicate those of another Solidity extension. Turn off `solidityWorkbench.syntaxDiagnostics.enabled` / `solidityWorkbench.compilerDiagnostics.enabled`, or the equivalent in the other extension.
-- Another Solidity extension with its own completions or auto-import may conflict with this one and show a similar suggestion next to ours. Disable the feature in one of them if this is distracting.
+- Another Solidity extension with its own completions or auto-import may conflict with this one and show a similar suggestion next to ours. Disable the feature in one of them (`solidityWorkbench.completion.enabled`, `solidityWorkbench.autoImport.enabled`) if this is distracting.
 - Without any Solidity extension, the workbench starts when the workspace contains a `.sol` file or a `foundry.toml`. A loose `.sol` file opened outside any workspace does not activate it.
 - Deleting a folder other than a library may leave its symbols in the index until the next reload or `Rebuild Symbol Index`, depending on how the file watcher reports the deletion on your platform.
 
@@ -229,6 +257,6 @@ Benchmarks on a large project (both use the real forge; the second also the inst
 
 Layout:
 
-- `src/core/`: pure logic, with no `vscode` imports: the project model and remappings, forge and solc integration, the symbol index and its cache, document analysis (syntax, outline), navigation, import edits and candidate ranking.
+- `src/core/`: pure logic, with no `vscode` imports: the project model and remappings, forge and solc integration, the symbol index and its cache, document analysis (syntax, outline), navigation, language completion (tolerant structure parser, cursor context, scope and types, version-aware catalog of globals), import edits and candidate ranking.
 - `src/host/`: the VS Code adapters of the core: settings, logging, project discovery, watchers.
-- `src/features/<feature>/`: one folder per feature, each registering itself through the `FeatureRegistry`: `autoImport`, `syntaxDiagnostics`, `compilerDiagnostics`, `outline`, `navigation`, `formatting`.
+- `src/features/<feature>/`: one folder per feature, each registering itself through the `FeatureRegistry`: `completion`, `autoImport`, `syntaxDiagnostics`, `compilerDiagnostics`, `outline`, `navigation`, `formatting`.

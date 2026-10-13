@@ -4,6 +4,10 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { compile } from "../../src/core/compiler/compile";
+import { complete, namesInScope } from "../../src/core/completion/complete";
+import { cursorContext } from "../../src/core/completion/cursorContext";
+import { parseStructure } from "../../src/core/completion/structure";
+import { structureFile, type StructureFile, type StructureHost } from "../../src/core/completion/symbols";
 import { listInstalledSolc, svmDirs } from "../../src/core/compiler/solcVersions";
 import { findDefinitions, sourceFile, type SourceFile, type SourceHost } from "../../src/core/navigation/definitions";
 import { loadProject } from "../../src/core/project/projectModel";
@@ -152,6 +156,66 @@ async function main(): Promise<void> {
   }
 
   console.log(`  (cold runs parse files synchronously here; in the extension parsing runs in a worker) max lag ${lagSince()}`);
+
+  // Completion: tolerant structure of large files, then requests through OpenZeppelin's inheritance.
+  await settle();
+  for (const rel of ["lib/openzeppelin-contracts/contracts/governance/Governor.sol", "lib/forge-std/src/safeconsole.sol"]) {
+    const text = await fs.readFile(path.join(root, rel), "utf8").catch(() => undefined);
+    if (text === undefined) continue;
+    const runs: number[] = [];
+    for (let i = 0; i < 5; i++) runs.push((await time(() => parseStructure(text)))[1]);
+    console.log(`parseStructure ${path.basename(rel)} (${text.split("\n").length} lines): ${stats(runs)}; max lag ${lagSince()}`);
+  }
+  const structures = new Map<string, StructureFile>();
+  const structureHost: StructureHost = {
+    async load(p) {
+      let f = structures.get(p);
+      if (!f) {
+        const text = await fs.readFile(p, "utf8").catch(() => undefined);
+        if (text === undefined) return undefined;
+        f = structureFile(p, text);
+        structures.set(p, f);
+      }
+      return f;
+    },
+    resolveImport: (imp, importer) => project.resolveImport(imp, importer),
+  };
+  // The parses above run back to back without yielding: let the ticker record them before measuring requests.
+  await settle();
+  const probes: Array<[string, string]> = [
+    ["IERC20(asset()).safeTransfer", "IERC20(asset()).|"],
+    ["uint256 capped = Math.min(amount, totalAssets());", "uint256 capped = |"],
+    ["_grantRole(DEFAULT_ADMIN_ROLE, _msgSender());", "_grantRole(DEFAULT_ADMIN_ROLE, |);"],
+    ["return super.supportsInterface(id);", "return super.|"],
+    ["uint256 capped = Math.min(amount, totalAssets());", "Math.|"],
+    ["uint256 capped = Math.min(amount, totalAssets());", "uint256 capped = add|"],
+  ];
+  for (const [find, replace] of probes) {
+    const text = ENTRY_TEXT.replace(find, replace);
+    const offset = text.indexOf("|");
+    const clean = text.slice(0, offset) + text.slice(offset + 1);
+    const env = { version: "0.8.30", path: ENTRY, host: structureHost };
+    const coldCache = structures.size;
+    const [list, tCold] = await time(() => complete(cursorContext(parseStructure(clean), offset), env));
+    const warm: number[] = [];
+    for (let i = 0; i < 5; i++) warm.push((await time(() => complete(cursorContext(parseStructure(clean), offset), env)))[1]);
+    const first = [...list].sort((a, b) => a.rank - b.rank).slice(0, 5).map((e) => e.label).join(", ");
+    console.log(`complete ${replace.padEnd(36)} ${String(list.length).padStart(3)} items (${first}); first ${tCold.toFixed(1)} ms (${structures.size - coldCache} files parsed), then ${stats(warm)}; max lag ${lagSince()}`);
+  }
+  {
+    const text = ENTRY_TEXT.replace("uint256 capped = Math.min(amount, totalAssets());", "uint256 capped = Mat|");
+    const offset = text.indexOf("|");
+    const clean = text.slice(0, offset) + text.slice(offset + 1);
+    const runs: number[] = [];
+    let size = 0;
+    for (let i = 0; i < 5; i++) {
+      const [names, t] = await time(() => namesInScope(cursorContext(parseStructure(clean), offset), { version: "0.8.30", path: ENTRY, host: structureHost }));
+      runs.push(t);
+      size = names.size;
+    }
+    console.log(`namesInScope (auto-import dedup, ${size} names): ${stats(runs)}`);
+  }
+  console.log(`  (completion runs on the extension host thread) max lag ${lagSince()}`);
   clearInterval(ticker);
   await fs.rm(ENTRY);
 }
