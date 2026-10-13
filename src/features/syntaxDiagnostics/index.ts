@@ -26,7 +26,7 @@ class SyntaxDiagnostics implements vscode.Disposable {
         if (e.contentChanges.length > 0) this.schedule(e.document, CHANGE_DELAY_MS);
       }),
       vscode.workspace.onDidCloseTextDocument((doc) => this.forget(doc.uri)),
-      vscode.languages.registerCodeActionsProvider(SOLIDITY_TEXT_SELECTOR, new KeywordTypoFixProvider(), {
+      vscode.languages.registerCodeActionsProvider(SOLIDITY_TEXT_SELECTOR, new SyntaxFixProvider(), {
         providedCodeActionKinds: [vscode.CodeActionKind.QuickFix],
       }),
     );
@@ -81,12 +81,24 @@ function toDiagnostic(document: vscode.TextDocument, problem: SyntaxProblem): vs
   return diagnostic;
 }
 
-/** "Change to `contract`" for misspelled keywords, from the syntax layer or from solc (`retruns`). */
-class KeywordTypoFixProvider implements vscode.CodeActionProvider {
+/**
+ * "Change to `contract`" for misspelled keywords, from the syntax layer or from solc (`retruns`),
+ * and "Remove trailing comma".
+ */
+class SyntaxFixProvider implements vscode.CodeActionProvider {
   provideCodeActions(document: vscode.TextDocument, _range: vscode.Range, context: vscode.CodeActionContext): vscode.CodeAction[] {
     const actions: vscode.CodeAction[] = [];
     for (const diagnostic of context.diagnostics) {
       if (diagnostic.source !== DIAGNOSTIC_SOURCE && diagnostic.source !== "solc") continue;
+      if (diagnostic.source === DIAGNOSTIC_SOURCE && diagnostic.code === "trailing-comma") {
+        const action = new vscode.CodeAction("Remove trailing comma", vscode.CodeActionKind.QuickFix);
+        action.diagnostics = [diagnostic];
+        action.isPreferred = true;
+        action.edit = new vscode.WorkspaceEdit();
+        action.edit.delete(document.uri, diagnostic.range);
+        actions.push(action);
+        continue;
+      }
       const keyword = TYPO_FIX.exec(diagnostic.message)?.[1];
       if (!keyword) continue;
       const action = new vscode.CodeAction(`Change to \`${keyword}\``, vscode.CodeActionKind.QuickFix);

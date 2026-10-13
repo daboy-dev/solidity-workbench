@@ -2,7 +2,7 @@ import { parse } from "@solidity-parser/parser";
 import { computeLineStarts } from "./extractSymbols";
 import { outlineFromAst, outlineFromRegex, type OutlineNode } from "./documentOutline";
 import { blankTrivia, scanTrivia } from "./lexContext";
-import { checkBrackets, checkKeywordTypos, describeParserError, type SyntaxProblem } from "./syntaxCheck";
+import { checkBrackets, checkKeywordTypos, checkTrailingCommas, describeParserError, type SyntaxProblem } from "./syntaxCheck";
 
 export interface DocumentAnalysis {
   readonly outline: OutlineNode[];
@@ -41,7 +41,7 @@ export function analyzeDocument(text: string): DocumentAnalysis {
     // The AST builder crashed after error recovery; use the fallbacks below.
   }
 
-  const own = [...checkBrackets(clean), ...checkKeywordTypos(clean)].sort((a, b) => a.start - b.start);
+  const own = [...checkBrackets(clean), ...checkKeywordTypos(clean), ...checkTrailingCommas(clean)].sort((a, b) => a.start - b.start);
   const parserErrors = tolerantErrors && tolerantErrors.length === 0 ? [] : strictParserErrors(text, tolerantErrors);
   const problems = [...own];
   const first = parserErrors[0];

@@ -1,12 +1,13 @@
 import * as vscode from "vscode";
 import { compile, solcLabel, type CompileResult, type CompilerDiagnostic } from "../../core/compiler/compile";
 import { resolveErrorCodes } from "../../core/compiler/compilerSettings";
+import { dataLocationFix } from "../../core/compiler/quickFixes";
 import { isAbortError } from "../../core/process";
 import { isFeatureEnabled, SECTION } from "../../host/settings";
 import { configuredSolc, installedSolc, invalidateInstalledSolc } from "../../host/solc";
 import { positionConverter } from "../../host/sourceHost";
 import type { ProjectHandle, WorkbenchCore } from "../../host/workbenchCore";
-import { isSolidityDocument, type Feature } from "../feature";
+import { isSolidityDocument, SOLIDITY_TEXT_SELECTOR, type Feature } from "../feature";
 
 /** solc diagnostics while typing, on unsaved content, filtered like `forge build`. */
 export const compilerDiagnosticsFeature: Feature = {
@@ -47,6 +48,9 @@ class CompilerDiagnostics implements vscode.Disposable {
     this.disposables.push(
       this.collection,
       this.status,
+      vscode.languages.registerCodeActionsProvider(SOLIDITY_TEXT_SELECTOR, new DataLocationFixProvider(), {
+        providedCodeActionKinds: [vscode.CodeActionKind.QuickFix],
+      }),
       vscode.workspace.onDidOpenTextDocument((doc) => this.schedule(doc, 0)),
       vscode.workspace.onDidChangeTextDocument((e) => {
         if (e.contentChanges.length > 0) this.schedule(e.document, readSettings(e.document.uri).delay);
@@ -243,4 +247,25 @@ function toDiagnostic(d: CompilerDiagnostic, at: (offset: number) => vscode.Posi
   // Unused variables and parameters, and unreachable code, are faded out by the editor.
   if (UNNECESSARY_CODES.has(d.code)) diagnostic.tags = [vscode.DiagnosticTag.Unnecessary];
   return diagnostic;
+}
+
+/** "Add `memory`" (and the other allowed locations) for solc's missing data location error 6651. */
+class DataLocationFixProvider implements vscode.CodeActionProvider {
+  provideCodeActions(document: vscode.TextDocument, _range: vscode.Range, context: vscode.CodeActionContext): vscode.CodeAction[] {
+    const actions: vscode.CodeAction[] = [];
+    for (const diagnostic of context.diagnostics) {
+      if (diagnostic.source !== COMPILER_SOURCE || diagnostic.code !== "6651") continue;
+      const fix = dataLocationFix(document.getText(), document.offsetAt(diagnostic.range.start), document.offsetAt(diagnostic.range.end), diagnostic.message);
+      if (!fix) continue;
+      fix.locations.forEach((location, i) => {
+        const action = new vscode.CodeAction(`Add \`${location}\``, vscode.CodeActionKind.QuickFix);
+        action.diagnostics = [diagnostic];
+        action.isPreferred = i === 0;
+        action.edit = new vscode.WorkspaceEdit();
+        action.edit.insert(document.uri, document.positionAt(fix.offset), ` ${location}`);
+        actions.push(action);
+      });
+    }
+    return actions;
+  }
 }

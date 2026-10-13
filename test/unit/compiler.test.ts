@@ -1,3 +1,4 @@
+import { dataLocationFix } from "../../src/core/compiler/quickFixes";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -293,5 +294,29 @@ contract Vault is Ownable {
     if (again.kind !== "compiled") throw new Error("no solc");
     const ctor = again.result.diagnostics.get(entry)!;
     expect(ctor.map((d) => [d.code, fixed.slice(d.start, d.end)])).toEqual([["3415", "contract Vault is Ownable"]]);
+  });
+});
+
+describe("data location quick fix", () => {
+  const apply = (src: string, decl: string, message: string) => {
+    const start = src.indexOf(decl);
+    const fix = dataLocationFix(src, start, start + decl.length, message)!;
+    return fix.locations.map((l) => src.slice(0, fix.offset) + ` ${l}` + src.slice(fix.offset));
+  };
+  const EXTERNAL = 'Data location must be "memory" or "calldata" for parameter in external function, but none was given.';
+  const VARIABLE = 'Data location must be "storage", "memory" or "calldata" for variable, but none was given.';
+
+  it("inserts the location before the name, calldata first for external parameters", () => {
+    expect(apply("function f(string s) external", "string s", EXTERNAL)).toEqual(["function f(string calldata s) external", "function f(string memory s) external"]);
+    expect(apply("Listing listing = Listing({", "Listing listing", VARIABLE)[0]).toBe("Listing memory listing = Listing({");
+    expect(apply("Lib.Config[] c;", "Lib.Config[] c", VARIABLE)).toEqual(["Lib.Config[] memory c;", "Lib.Config[] storage c;", "Lib.Config[] calldata c;"]);
+  });
+
+  it("appends to nameless parameters", () => {
+    expect(apply("function f(bytes) external", "bytes", EXTERNAL)[0]).toBe("function f(bytes calldata) external");
+  });
+
+  it("ignores other messages", () => {
+    expect(dataLocationFix("x", 0, 1, "Something else")).toBeUndefined();
   });
 });

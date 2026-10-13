@@ -90,4 +90,43 @@ suite("Compiler diagnostics", function () {
     await new Promise((r) => setTimeout(r, 1_500));
     assert.deepEqual(solc(doc.uri).map((d) => d.code), []);
   });
+
+  test("the example of v0.3: remove the trailing comma, then add the missing data location", async () => {
+    const editor = await open(
+      "src/Listing.sol",
+      `${HEADER}contract Marketplace {
+    struct Listing {
+        address nftAddress;
+        uint256 price;
+    }
+
+    function listNFT(address nftAddress_, uint256 price_) external {
+        Listing listing = Listing({
+            nftAddress: nftAddress_,
+            price: price_,
+        });
+    }
+}
+`,
+    );
+    const doc = editor.document;
+    const syntax = () => vscode.languages.getDiagnostics(doc.uri).filter((d) => d.source === "solidity-workbench");
+    const [comma] = await waitFor(() => syntax().length > 0 && syntax(), "syntax diagnostics");
+    assert.equal(comma!.message, "Trailing comma before `}` is not allowed.");
+    let actions = await vscode.commands.executeCommand<vscode.CodeAction[]>("vscode.executeCodeActionProvider", doc.uri, comma!.range);
+    const remove = actions.find((a) => a.title === "Remove trailing comma");
+    assert.ok(remove, actions.map((a) => a.title).join(" | "));
+    assert.ok(await vscode.workspace.applyEdit(remove.edit!));
+    assert.match(doc.getText(), /price: price_\n/);
+
+    const [location] = await waitFor(() => solc(doc.uri).find((d) => d.code === "6651") && solc(doc.uri).filter((d) => d.code === "6651"), "solc 6651");
+    actions = await vscode.commands.executeCommand<vscode.CodeAction[]>("vscode.executeCodeActionProvider", doc.uri, location!.range);
+    const titles = actions.map((a) => a.title);
+    assert.deepEqual(titles.filter((t) => t.startsWith("Add `")), ["Add `memory`", "Add `storage`", "Add `calldata`"]);
+    const memory = actions.find((a) => a.title === "Add `memory`")!;
+    assert.equal(memory.isPreferred, true);
+    assert.ok(await vscode.workspace.applyEdit(memory.edit!));
+    assert.match(doc.getText(), /Listing memory listing = Listing\(\{/);
+    await waitFor(() => solc(doc.uri).every((d) => d.severity !== vscode.DiagnosticSeverity.Error) || undefined, "no solc errors");
+  });
 });

@@ -10,7 +10,7 @@ export interface SyntaxProblem {
   readonly fix?: string;
 }
 
-export type SyntaxProblemCode = "unclosed-bracket" | "unexpected-bracket" | "mismatched-bracket" | "keyword-typo" | "parser";
+export type SyntaxProblemCode = "unclosed-bracket" | "unexpected-bracket" | "mismatched-bracket" | "keyword-typo" | "trailing-comma" | "parser";
 
 const OPENERS: Record<string, string> = { "{": "}", "(": ")", "[": "]" };
 const CLOSERS: Record<string, string> = { "}": "{", ")": "(", "]": "[" };
@@ -94,6 +94,47 @@ export function checkBrackets(clean: string): SyntaxProblem[] {
   }
   for (const o of stack.reverse()) unclosed(o);
   return problems.sort((a, b) => a.start - b.start);
+}
+
+/** Words before `(` that open a parenthesized expression or tuple, where `(a, )` may be valid. */
+const NOT_A_LIST = new Set(["return", "if", "while", "for", "else", "do", "emit", "revert", "delete", "new"]);
+
+/**
+ * Trailing commas, which Solidity never accepts in argument and parameter lists, struct
+ * literals, enums, import lists and array literals: `S({a: 1,})`, `f(a, b,)`. Tuples may
+ * have empty components (`(bool ok, ) = x.call("")`), so a `(` that does not follow a
+ * name, a call or an index is left alone. Runs on comment- and string-free text.
+ */
+export function checkTrailingCommas(clean: string): SyntaxProblem[] {
+  const problems: SyntaxProblem[] = [];
+  const stack: Array<{ char: string; list: boolean }> = [];
+  let lastComma = -1;
+  for (let i = 0; i < clean.length; i++) {
+    const c = clean[i]!;
+    if (/\s/.test(c)) continue;
+    if (c === "(" || c === "[" || c === "{") {
+      stack.push({ char: c, list: c !== "(" || isListParen(clean, i) });
+    } else if (c === ")" || c === "]" || c === "}") {
+      const open = stack.pop();
+      if (lastComma >= 0 && open?.list) {
+        problems.push({ start: lastComma, end: lastComma + 1, code: "trailing-comma", message: `Trailing comma before \`${c}\` is not allowed.`, fix: "" });
+      }
+    }
+    lastComma = c === "," ? i : -1;
+  }
+  return problems;
+}
+
+/** True when the `(` at `i` opens a call's arguments or a parameter list. */
+function isListParen(clean: string, i: number): boolean {
+  let j = i - 1;
+  while (j >= 0 && /\s/.test(clean[j]!)) j--;
+  const prev = clean[j];
+  if (prev === ")" || prev === "]" || prev === "}") return true;
+  if (prev === undefined || !/[\w$]/.test(prev)) return false;
+  let k = j;
+  while (k >= 0 && /[\w$]/.test(clean[k]!)) k--;
+  return !NOT_A_LIST.has(clean.slice(k + 1, j + 1));
 }
 
 const NAMED_BLOCK = /^(abstract\s+contract|contract|interface|library|struct|enum|function|modifier)\s+([A-Za-z_$][\w$]*)/;

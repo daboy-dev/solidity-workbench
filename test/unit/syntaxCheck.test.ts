@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 import { analyzeDocument } from "../../src/core/solidity/analyzeDocument";
-import { damerauLevenshtein, describeParserError } from "../../src/core/solidity/syntaxCheck";
+import { damerauLevenshtein, describeParserError, checkTrailingCommas } from "../../src/core/solidity/syntaxCheck";
 
 /** Problems as [code, text at the range, message]. */
 function problems(src: string): Array<[string, string, string]> {
@@ -158,5 +158,35 @@ describe("damerauLevenshtein", () => {
     expect(damerauLevenshtein("contact", "contract")).toBe(1);
     expect(damerauLevenshtein("abc", "abc")).toBe(0);
     expect(damerauLevenshtein("", "abc")).toBe(3);
+  });
+});
+
+describe("trailing commas", () => {
+  /** The comma and the closer it precedes, for each problem. */
+  const commas = (src: string) => checkTrailingCommas(src).map((p) => /^,\s*./.exec(src.slice(p.start))![0].replace(/\s+/g, ""));
+
+  it("reports them in struct literals, calls, parameter lists, enums and arrays", () => {
+    expect(commas("L memory l = L({\n    a: a_,\n});")).toEqual([",}"]);
+    expect(commas("f(1, 2, );")).toEqual([",)"]);
+    expect(commas("function f(uint a,) {}")).toEqual([",)"]);
+    expect(commas("function f() returns (uint a,) {}")).toEqual([",)"]);
+    expect(commas("enum E { A, B, }")).toEqual([",}"]);
+    expect(commas("x = [1, 2,];")).toEqual([",]"]);
+    expect(commas('a.call{value: 1,}("");')).toEqual([",}"]);
+    expect(commas('import {A, B,} from "x.sol";')).toEqual([",}"]);
+    expect(checkTrailingCommas("f(1,)")[0]).toMatchObject({ code: "trailing-comma", message: "Trailing comma before `)` is not allowed.", fix: "" });
+  });
+
+  it("accepts empty tuple components", () => {
+    expect(commas('(bool ok, ) = a.call("");')).toEqual([]);
+    expect(commas("(, uint256 b) = g();")).toEqual([]);
+    expect(commas("return (a, );")).toEqual([]);
+    expect(commas("abi.decode(data, (uint256, bool))")).toEqual([]);
+  });
+
+  it("explains the example of the issue better than the parser", () => {
+    const src = "pragma solidity ^0.8.20;\ncontract M {\n  struct L { address a; }\n  function f(address a_) external {\n    L memory l = L({\n      a: a_,\n    });\n  }\n}\n";
+    const problems = analyzeDocument(src).problems;
+    expect(problems.map((p) => p.message)).toEqual(["Trailing comma before `}` is not allowed."]);
   });
 });
