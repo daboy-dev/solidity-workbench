@@ -105,7 +105,7 @@ Unsaved changes in open files are taken into account.
 Formats with `forge fmt`, so the `[fmt]` section of your `foundry.toml` applies. It is **off by default**, since many people prefer to run `forge fmt` themselves. To use it, set `solidityWorkbench.formatting.enabled` to `true` and pick it as the formatter:
 
 ```json
-"[solidity]": { "editor.defaultFormatter": "local.solidity-workbench" }
+"[solidity]": { "editor.defaultFormatter": "daboy-dev.solidity-workbench" }
 ```
 
 If the file has a syntax error, nothing is changed and the reason is shown in the status bar. forge prints partially formatted code in that case, and that output is never applied.

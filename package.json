@@ -1,14 +1,14 @@
 {
   "name": "solidity-workbench",
   "displayName": "Solidity Workbench",
-  "description": "Productivity tools for Solidity and Foundry projects, starting with auto-import of symbols.",
+  "description": "Auto-import, completion that understands your code, diagnostics while you type and Go to Definition for Solidity and Foundry projects.",
   "icon": "images/icon.png",
   "galleryBanner": {
     "color": "#1B1E4B",
     "theme": "dark"
   },
   "version": "0.3.0",
-  "publisher": "local",
+  "publisher": "daboy-dev",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -23,13 +23,18 @@
   },
   "categories": [
     "Programming Languages",
-    "Other"
+    "Linters",
+    "Formatters"
   ],
   "keywords": [
     "solidity",
     "foundry",
     "forge",
     "auto import",
+    "completion",
+    "intellisense",
+    "diagnostics",
+    "solc",
     "ethereum"
   ],
   "main": "./dist/extension.js",
@@ -258,6 +263,7 @@
     "test:unit": "vitest run",
     "test:integration": "node esbuild.mjs --tests && node out/integration/runTests.js",
     "vscode:prepublish": "npm run typecheck && npm run build:prod",
-    "package": "vsce package --no-dependencies"
+    "package": "vsce package --no-dependencies",
+    "publish": "vsce publish --azure-credential --no-dependencies"
   }
 }

@@ -31,14 +31,11 @@ Also included: document outline, Go to Symbol in Workspace and clickable import 
 
 ## Installation
 
-It is not in the Marketplace yet: build the `.vsix` from this repository and install it.
+Install **Solidity Workbench** from the Extensions view (`Ctrl+Shift+X` / `Cmd+Shift+X`), or from the command line:
 
 ```bash
-npm install && npm run package
-code --install-extension solidity-workbench-0.3.0.vsix
+code --install-extension daboy-dev.solidity-workbench
 ```
-
-Then run *Developer: Reload Window*. To update, install the new `.vsix` the same way; settings are kept.
 
 Requirements: VS Code 1.90 or newer. [Foundry](https://getfoundry.sh) is recommended: compiler diagnostics use the solc binaries forge installs, and remappings are read from `forge remappings` (inferred like forge does when it is missing).
 
@@ -49,7 +46,7 @@ These are off by default:
 - **Formatting with `forge fmt`**, using the `[fmt]` section of your `foundry.toml`. Enable `solidityWorkbench.formatting.enabled` and pick it as the formatter:
 
   ```json
-  "[solidity]": { "editor.defaultFormatter": "local.solidity-workbench" }
+  "[solidity]": { "editor.defaultFormatter": "daboy-dev.solidity-workbench" }
   ```
 
 ## Performance
