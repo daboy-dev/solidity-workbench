@@ -1,10 +1,14 @@
 import * as vscode from "vscode";
-import { hoverAt, type HoverSection } from "../../core/hover/hover";
+import { hoverAt, type AstLookup, type HoverSection } from "../../core/hover/hover";
+import { occurrenceAt } from "../../core/references/rename";
 import { documentLanguageVersion } from "../../host/solc";
 import type { WorkbenchCore } from "../../host/workbenchCore";
 import { SOLIDITY_TEXT_SELECTOR, type Feature } from "../feature";
 
-/** Hover: type and documentation of builtins and project symbols, without running solc. */
+/**
+ * Hover: signature and NatSpec of project symbols, type and documentation of builtins.
+ * Never runs solc: its AST is only used when it is already there for this exact text.
+ */
 export const hoverFeature: Feature = {
   id: "hover",
   activate(core: WorkbenchCore): vscode.Disposable {
@@ -20,7 +24,16 @@ class SolidityHoverProvider implements vscode.HoverProvider {
     const project = document.uri.scheme === "file" ? await this.core.projectFor(document.uri) : undefined;
     const version = await documentLanguageVersion(document, project);
     if (token.isCancellationRequested) return undefined;
-    const found = await hoverAt(structure, document.offsetAt(position), { version, path: document.uri.fsPath, host: this.core.structures.host(project) });
+    const file = document.uri.fsPath;
+    const ast = project ? this.core.references.peek(project, file, document.getText()) : undefined;
+    const lookup: AstLookup | undefined = ast
+      ? (offset) => {
+          const occurrence = occurrenceAt(ast.index, file, offset);
+          const decl = occurrence && ast.index.decls.get(occurrence.key);
+          return decl && { path: decl.file, nameStart: decl.nameStart };
+        }
+      : undefined;
+    const found = await hoverAt(structure, document.offsetAt(position), { version, path: file, host: this.core.structures.host(project), ...(lookup ? { ast: lookup } : {}) });
     if (!found || token.isCancellationRequested) return undefined;
     const range = new vscode.Range(document.positionAt(found.start), document.positionAt(found.end));
     return new vscode.Hover(found.sections.map(toMarkdown), range);

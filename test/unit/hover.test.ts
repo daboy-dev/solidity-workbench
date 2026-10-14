@@ -82,17 +82,169 @@ contract C {
     expect(await docOf(inBody("uint256 x = 2 da|ys;"))).toBe("Time unit: `1 days` is 86400 seconds.");
   });
 
-  it("stays quiet in comments, strings, shadowing locals and user-defined members", async () => {
+  it("stays quiet in comments and strings, and lets locals and user-defined members win", async () => {
     expect(await hover(inBody("// msg.sen|der"))).toBe("(none)");
     expect(await hover(inBody('string memory s = "msg.sen|der";'))).toBe("(none)");
-    expect(await hover(inBody("uint256 keccak256 = 1; kecc|ak256;"))).toBe("(none)");
+    expect(await hover(inBody("uint256 keccak256 = 1; kecc|ak256;"))).toBe("uint256 keccak256");
     const source = `pragma solidity ^0.8.20;
 struct S { uint256 length; }
 contract C {
     function f(S memory s) external { s.len|gth; }
 }
 `;
-    expect(await hover(source)).toBe("(none)");
+    expect(await hover(source)).toBe("uint256 S.length");
     expect(await hover("pragma sol|idity ^0.8.20;")).toBe("(none)");
+  });
+});
+
+const TYPES = `// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+/// @notice A listed item.
+struct Listing {
+    uint256 price;
+    address seller;
+}
+
+enum Side { Buy, Sell }
+
+uint256 constant FEE_BPS = 25; // basis points
+
+/**
+ * @title Token interface
+ * @notice Moves tokens.
+ */
+interface IToken {
+    /// @notice Sends \`amount\` tokens to \`to\`.
+    /// @dev Reverts on failure.
+    /// @param to The recipient.
+    /// @param amount How much to send.
+    /// @return ok Always true.
+    function transfer(address to, uint256 amount) external returns (bool ok);
+}
+`;
+
+const VAULT = `// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+import {Listing, Side, IToken, FEE_BPS} from "./Types.sol";
+
+abstract contract Base {
+    /// @notice Called after every deposit.
+    function hook(uint256 amount) internal virtual;
+}
+
+contract Vault is Base {
+    /// Total deposited.
+    uint256 public totalDeposits = 0;
+    IToken internal immutable token;
+    mapping(address owner => uint256 balance) public balances;
+    event Deposited(address indexed who, uint256 amount);
+    error TooSmall(uint256 amount, uint256 minimum);
+
+    /// @notice Deposits \`amount\`.
+    /// @param amount Wei to deposit.
+    /// @return shares Shares minted.
+    function deposit(uint256 amount, Listing memory listing) external returns (uint256 shares) {
+        BODY
+    }
+
+    function pay(address to) external {}
+    function pay(address to, uint256 amount) external {}
+
+    function hook(uint256 amount) internal override {}
+}
+`;
+
+describe("hover on project symbols", () => {
+  const at = (body: string) => hoverIn({ "/p/Types.sol": TYPES, "/p/Vault.sol": VAULT.replace("BODY", body) }, "/p/Vault.sol");
+  const full = async (body: string) => {
+    const files = { "/p/Types.sol": TYPES, "/p/Vault.sol": VAULT.replace("BODY", body) };
+    const source = files["/p/Vault.sol"];
+    const offset = source.indexOf("|");
+    const text = source.replace("|", "");
+    const h = await hoverAt(parseStructure(text), offset, { version: "0.8.30", path: "/p/Vault.sol", host: memoryHost({ ...files, "/p/Vault.sol": text }) });
+    return h?.sections ?? [];
+  };
+
+  it("shows parameters and locals with their @param and @return text", async () => {
+    expect(await at("amou|nt;")).toBe("uint256 amount");
+    expect((await full("amou|nt;"))[0]?.doc).toBe("Wei to deposit.");
+    expect((await full("shar|es = 1;"))[0]?.doc).toBe("Shares minted.");
+    expect(await at("listi|ng.price;")).toBe("Listing memory listing");
+    expect(await at("uint256 x = 1; x|;")).toBe("uint256 x");
+  });
+
+  it("shows state variables, events, errors and constants", async () => {
+    expect(await at("totalDep|osits;")).toBe("uint256 public totalDeposits");
+    expect((await full("totalDep|osits;"))[0]?.doc).toBe("Total deposited.");
+    expect(await at("bal|ances[msg.sender];")).toBe("mapping(address owner => uint256 balance) public balances");
+    expect(await at("emit Depos|ited(msg.sender, amount);")).toBe("event Deposited(address indexed who, uint256 amount)");
+    expect(await at("revert TooSm|all(amount, 1);")).toBe("error TooSmall(uint256 amount, uint256 minimum)");
+    expect(await at("FEE_B|PS;")).toBe("uint256 constant FEE_BPS = 25");
+  });
+
+  it("shows functions with their NatSpec, from other files too", async () => {
+    expect(await at("token.trans|fer(msg.sender, amount);")).toBe("function transfer(address to, uint256 amount) external returns (bool ok)");
+    const doc = (await full("token.trans|fer(msg.sender, amount);"))[0]?.doc ?? "";
+    expect(doc).toContain("Sends `amount` tokens to `to`.");
+    expect(doc).toContain("Reverts on failure.");
+    expect(doc).toContain("*@param* `to` — The recipient.");
+    expect(doc).toContain("*@return* `ok` — Always true.");
+    expect(doc).toContain("*Declared in `IToken` (Types.sol).*");
+  });
+
+  it("shows types: structs, enums, contracts and their members", async () => {
+    expect(await at("Listi|ng memory l;")).toBe("struct Listing {\n    uint256 price;\n    address seller;\n}");
+    expect((await full("Listi|ng memory l;"))[0]?.doc).toBe("A listed item.");
+    expect(await at("Si|de s;")).toBe("enum Side { Buy, Sell }");
+    expect(await at("Side.Se|ll;")).toBe("Side.Sell");
+    expect(await at("listing.pri|ce;")).toBe("uint256 Listing.price");
+    expect(await at("IT|oken t;")).toBe("interface IToken");
+    expect((await full("IT|oken t;"))[0]?.doc).toBe("**Token interface**\n\nMoves tokens.");
+  });
+
+  it("shows inherited members and super calls with where they come from", async () => {
+    expect(await at("super.ho|ok(amount);")).toBe("function hook(uint256 amount) internal virtual");
+    expect((await full("super.ho|ok(amount);"))[0]?.doc).toBe("Called after every deposit.\n\n*Declared in `Base` (Vault.sol).*");
+    // The override in this contract wins over the base.
+    expect(await at("ho|ok(amount);")).toBe("function hook(uint256 amount) internal override");
+  });
+
+  it("picks overloads by argument count", async () => {
+    expect(await at("pa|y(msg.sender);")).toBe("function pay(address to) external");
+    expect(await at("this.pa|y(msg.sender, 1);")).toBe("function pay(address to, uint256 amount) external");
+    expect(await at("pa|y;")).toBe("function pay(address to) external\nfunction pay(address to, uint256 amount) external");
+  });
+
+  it("shows the declaration under the cursor", async () => {
+    const source = VAULT.replace("function dep", "function dep|").replace("BODY", "");
+    expect(await hoverIn({ "/p/Types.sol": TYPES, "/p/Vault.sol": source }, "/p/Vault.sol")).toBe(
+      "function deposit(uint256 amount, Listing memory listing) external returns (uint256 shares)",
+    );
+    expect(await hoverIn({ "/p/Types.sol": TYPES, "/p/Vault.sol": VAULT.replace("contract Vault", "contract Va|ult").replace("BODY", "") }, "/p/Vault.sol")).toBe(
+      "contract Vault is Base",
+    );
+  });
+
+  it("breaks long parameter lists", async () => {
+    const source = `pragma solidity ^0.8.20;
+contract C {
+    function settle(address seller, address buyer, uint256 price, uint256 deadline, bytes calldata signature) external returns (bool) {}
+    function f() external { sett|le; }
+}
+`;
+    expect(await hover(source)).toBe(
+      "function settle(\n    address seller,\n    address buyer,\n    uint256 price,\n    uint256 deadline,\n    bytes calldata signature\n) external returns (bool)",
+    );
+  });
+
+  it("falls back to solc's AST for what the parser cannot resolve", async () => {
+    const text = VAULT.replace("BODY", "amount.mulDiv(1, 2);");
+    const offset = text.indexOf("mulDiv") + 1;
+    const lib = "pragma solidity ^0.8.20;\nlibrary Math {\n    function mulDiv(uint256 x, uint256 y, uint256 d) internal pure returns (uint256) {}\n}\n";
+    const host = memoryHost({ "/p/Types.sol": TYPES, "/p/Vault.sol": text, "/p/Math.sol": lib });
+    const ast = (o: number) => (o === offset - 1 ? { path: "/p/Math.sol", nameStart: lib.indexOf("mulDiv") } : undefined);
+    const h = await hoverAt(parseStructure(text), offset, { version: "0.8.30", path: "/p/Vault.sol", host, ast });
+    expect(h?.sections[0]?.code).toBe("function mulDiv(uint256 x, uint256 y, uint256 d) internal pure returns (uint256)");
   });
 });

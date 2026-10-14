@@ -189,7 +189,7 @@
           "solidityWorkbench.hover.enabled": {
             "type": "boolean",
             "default": true,
-            "markdownDescription": "Show the type and documentation of the symbol under the mouse: built-in globals and members (`msg.sender`, `block.timestamp`, `abi.encode`, `keccak256`, units...) according to the file's solc version. Never runs solc. May duplicate hovers from other Solidity extensions."
+            "markdownDescription": "Show what the name under the mouse is: the signature and NatSpec of variables, parameters, functions, events, errors, structs, enums and contracts of the project (inherited and imported ones included), and the type and documentation of built-in globals and members (`msg.sender`, `block.timestamp`, `abi.encode`, `keccak256`, units...) according to the file's solc version. Never runs solc. May duplicate hovers from other Solidity extensions."
           }
         }
       },

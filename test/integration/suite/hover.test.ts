@@ -65,6 +65,58 @@ suite("Hover", () => {
     assert.match(await hoverText(doc, keccak), /function keccak256\(bytes memory\) returns \(bytes32\)/);
   });
 
+  test("shows project symbols with their NatSpec, through remappings and inheritance", async () => {
+    const source = `// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+
+contract HoverVault is Ownable {
+    constructor() Ownable(msg.sender) {}
+
+    /// @notice Deposits \`amount\` wei.
+    /// @param amount Wei to deposit.
+    function deposit(uint256 amount) external onlyOwner {}
+
+    function f() external {
+        this.deposit(1);
+    }
+}
+`;
+    const { doc } = await openAtMarker("src/HoverVault.sol", source.replace("this.deposit", "this.dep|osit"));
+    const call = await hoverText(doc, doc.positionAt(doc.getText().indexOf("this.deposit") + 7));
+    assert.match(call, /function deposit\(uint256 amount\) external onlyOwner/);
+    assert.match(call, /Deposits `amount` wei\./);
+    const param = await hoverText(doc, doc.positionAt(doc.getText().indexOf("amount) external") + 2));
+    assert.match(param, /uint256 amount/);
+    assert.match(param, /Wei to deposit\./);
+    const modifier = await hoverText(doc, doc.positionAt(doc.getText().indexOf("onlyOwner") + 2));
+    assert.match(modifier, /modifier onlyOwner\(\)/);
+    assert.match(modifier, /Declared in `Ownable` \(Ownable\.sol\)/);
+  });
+
+  test("uses solc's AST, once built, for `using for` members", async () => {
+    const source = `// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+library HoverMath {
+    /// @notice Doubles \`x\`.
+    function twice(uint256 x) internal pure returns (uint256) { return x * 2; }
+}
+
+contract HoverUsing {
+    using HoverMath for uint256;
+    function f(uint256 n) external pure returns (uint256) { return n.tw|ice(); }
+}
+`;
+    const { doc, position } = await openAtMarker("src/HoverUsing.sol", source);
+    // Find All References compiles the project; hover never does.
+    await vscode.commands.executeCommand("vscode.executeReferenceProvider", doc.uri, position);
+    const text = await hoverText(doc, position);
+    assert.match(text, /function twice\(uint256 x\) internal pure returns \(uint256\)/);
+    assert.match(text, /Doubles `x`\./);
+  });
+
   test("can be disabled from the settings", async () => {
     const config = vscode.workspace.getConfiguration("solidityWorkbench");
     await config.update("hover.enabled", false, vscode.ConfigurationTarget.Workspace);
