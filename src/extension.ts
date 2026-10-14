@@ -36,7 +36,7 @@ export function activate(context: vscode.ExtensionContext): WorkbenchApi {
   const parser = new WorkerFileParser(workerScript, (m) => log.warn(m));
   const interactiveParser = new WorkerFileParser(workerScript, (m) => log.warn(m), 1);
   const cacheDir = (context.storageUri ?? context.globalStorageUri).fsPath;
-  const core = new WorkbenchCoreImpl(log, parser, cacheDir, interactiveParser);
+  const core = new WorkbenchCoreImpl(log, parser, cacheDir, interactiveParser, context.asAbsolutePath("dist/referencesWorker.js"));
   const registry = new FeatureRegistry(core, FEATURES);
 
   context.subscriptions.push(

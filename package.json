@@ -199,7 +199,7 @@
           "solidityWorkbench.rename.enabled": {
             "type": "boolean",
             "default": true,
-            "markdownDescription": "Rename Symbol (F2) for local variables and parameters, respecting blocks and shadowing, and their `@param` / `@return` NatSpec tags. May conflict with renaming from other Solidity extensions."
+            "markdownDescription": "Rename Symbol (F2). Local variables and parameters are renamed instantly, respecting blocks and shadowing; everything else (state variables, functions with their overrides, modifiers, events, errors, structs and fields, enums, types, contracts and their file) is renamed across `src`, `test` and `script` using solc's AST, and the result is checked by compiling it again. Refused when the project does not compile or the symbol is declared in `lib/`. May conflict with renaming from other Solidity extensions."
           }
         }
       },

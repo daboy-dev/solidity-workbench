@@ -10,6 +10,7 @@ import { formatRemapping } from "../core/project/remappings";
 import { DocumentAnalysisService, type AnalyzedDocument, type AnalyzedFile } from "./documentAnalysis";
 import type { Logger } from "./logger";
 import { affectsCore, readCoreSettings } from "./settings";
+import { ReferenceService } from "./references";
 import { StructureService } from "./structures";
 
 /** A loaded project and its index, as seen by features. */
@@ -38,6 +39,8 @@ export interface WorkbenchCore {
   analyzeFile(path: string): Promise<AnalyzedFile | undefined>;
   /** Tolerant structures of open documents and files on disk, for completion. */
   readonly structures: StructureService;
+  /** solc's AST of each project, for rename and references. */
+  readonly references: ReferenceService;
   projects(): readonly ProjectHandle[];
 }
 
@@ -158,6 +161,7 @@ export class WorkbenchCoreImpl implements WorkbenchCore, vscode.Disposable {
 
   private readonly documents: DocumentAnalysisService;
   readonly structures = new StructureService();
+  readonly references: ReferenceService;
 
   constructor(
     readonly log: Logger,
@@ -165,11 +169,15 @@ export class WorkbenchCoreImpl implements WorkbenchCore, vscode.Disposable {
     private readonly cacheDir: string | undefined,
     /** Parser for interactive work (open documents), kept apart from indexing so it never waits behind it. */
     interactiveParser: FileParser,
+    /** Script of the solc AST worker (dist/referencesWorker.js). */
+    referencesWorker: string,
   ) {
     this.documents = new DocumentAnalysisService(interactiveParser);
+    this.references = new ReferenceService(referencesWorker);
     this.disposables.push(
       this.documents,
       this.structures,
+      this.references,
       this.changeEmitter,
       vscode.workspace.onDidChangeConfiguration((e) => {
         if (affectsCore(e)) for (const root of this.entries.keys()) this.scheduleReload(root, 0);

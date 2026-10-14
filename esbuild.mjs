@@ -23,6 +23,7 @@ const builds = [
     entryPoints: {
       extension: "src/extension.ts",
       indexWorker: "src/core/index/indexWorker.ts",
+      referencesWorker: "src/core/references/referencesWorker.ts",
     },
     outdir: "dist",
   },

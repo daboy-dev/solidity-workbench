@@ -54,7 +54,7 @@ export interface CompileRequest {
 const defaultSolcExec: SolcExec = (solc, args, cwd, input, signal) =>
   runProcess(solc, args, { cwd, input, timeoutMs: 60_000, ...(signal ? { signal } : {}) });
 
-interface SolcError {
+export interface SolcError {
   severity: Severity;
   errorCode?: string;
   type: string;
@@ -63,7 +63,7 @@ interface SolcError {
   secondarySourceLocations?: Array<{ file?: string; start?: number; end?: number; message?: string }>;
 }
 
-interface SolcOutput {
+export interface SolcOutput {
   errors?: SolcError[];
   sources?: Record<string, unknown>;
 }
@@ -111,14 +111,33 @@ async function run(req: CompileRequest, solc: InstalledSolc, withEvmVersion: boo
   for (const [abs, content] of req.overlays) {
     if (project.contains(abs) && project.areaOf(abs) !== "lib") sources[project.sourceUnitName(abs)] = { content };
   }
-  const evmVersion = withEvmVersion ? project.compiler.evmVersion : undefined;
+  // Analysis only: no bytecode, ABI or AST is requested, which keeps solc fast.
+  return runStandardJson({ project, solc, sources, outputSelection: { "*": { "": [] } }, withEvmVersion, ...pick(req) });
+}
+
+const pick = (req: CompileRequest) => ({ ...(req.signal ? { signal: req.signal } : {}), ...(req.exec ? { exec: req.exec } : {}) });
+
+export interface StandardJsonRequest {
+  readonly project: ProjectModel;
+  readonly solc: InstalledSolc;
+  /** Sources by source unit name; imports of other files are read by solc from disk. */
+  readonly sources: Readonly<Record<string, { readonly content: string }>>;
+  readonly outputSelection: unknown;
+  readonly withEvmVersion?: boolean;
+  readonly signal?: AbortSignal;
+  readonly exec?: SolcExec;
+}
+
+/** Runs solc's standard JSON interface with the project's remappings and EVM version. */
+export async function runStandardJson(req: StandardJsonRequest): Promise<SolcOutput> {
+  const { project, solc } = req;
+  const evmVersion = req.withEvmVersion !== false ? project.compiler.evmVersion : undefined;
   const input = {
     language: "Solidity",
-    sources,
+    sources: req.sources,
     settings: {
       remappings: project.remappings.map(formatRemapping),
-      // Analysis only: no bytecode, ABI or AST is requested, which keeps solc fast.
-      outputSelection: { "*": { "": [] } },
+      outputSelection: req.outputSelection,
       ...(evmVersion ? { evmVersion } : {}),
     },
   };
@@ -127,7 +146,7 @@ async function run(req: CompileRequest, solc: InstalledSolc, withEvmVersion: boo
   const output = JSON.parse(stdout) as SolcOutput;
   // Older solc versions reject newer EVM versions (forge downgrades them): retry with the default.
   if (evmVersion && output.errors?.some((e) => e.severity === "error" && /evm ?version/i.test(e.message) && !e.sourceLocation)) {
-    return run(req, solc, false);
+    return runStandardJson({ ...req, withEvmVersion: false });
   }
   return output;
 }
