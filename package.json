@@ -183,8 +183,19 @@
         }
       },
       {
-        "title": "Navigation",
+        "title": "Hover",
         "order": 8,
+        "properties": {
+          "solidityWorkbench.hover.enabled": {
+            "type": "boolean",
+            "default": true,
+            "markdownDescription": "Show the type and documentation of the symbol under the mouse: built-in globals and members (`msg.sender`, `block.timestamp`, `abi.encode`, `keccak256`, units...) according to the file's solc version. Never runs solc. May duplicate hovers from other Solidity extensions."
+          }
+        }
+      },
+      {
+        "title": "Navigation",
+        "order": 9,
         "properties": {
           "solidityWorkbench.navigation.enabled": {
             "type": "boolean",
@@ -195,7 +206,7 @@
       },
       {
         "title": "Rename",
-        "order": 9,
+        "order": 10,
         "properties": {
           "solidityWorkbench.rename.enabled": {
             "type": "boolean",
@@ -206,7 +217,7 @@
       },
       {
         "title": "Formatting",
-        "order": 10,
+        "order": 11,
         "properties": {
           "solidityWorkbench.formatting.enabled": {
             "type": "boolean",

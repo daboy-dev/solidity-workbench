@@ -90,6 +90,7 @@ More measurements and how each part works: [How it works](docs/how-it-works.md).
 | `solidityWorkbench.compilerDiagnostics.ignoredCodes` | `[]` | Extra warning codes to hide (`2072` or `"unused-var"`), added to `ignored_error_codes`. |
 | `solidityWorkbench.compiler.solcPath` | `""` | solc binary path or installed version to use instead of the automatic choice. |
 | `solidityWorkbench.outline.enabled` | `true` | Provide the document outline. |
+| `solidityWorkbench.hover.enabled` | `true` | Show the type and documentation of builtins (`msg.sender`, `abi.encode`...) on hover. |
 | `solidityWorkbench.navigation.enabled` | `true` | Go to Definition, Find All References, Document Highlight, clickable import paths and Go to Symbol in Workspace. |
 | `solidityWorkbench.rename.enabled` | `true` | Rename Symbol (`F2`) across the project's own files. |
 | `solidityWorkbench.formatting.enabled` | `false` | Format with `forge fmt`. |
