@@ -12,6 +12,10 @@ import { listInstalledSolc, svmDirs } from "../../src/core/compiler/solcVersions
 import { findDefinitions, sourceFile, type SourceFile, type SourceHost } from "../../src/core/navigation/definitions";
 import { loadProject } from "../../src/core/project/projectModel";
 import { analyzeDocument } from "../../src/core/solidity/analyzeDocument";
+import { runProcess } from "../../src/core/process";
+import { compileProjectAst, listOwnFiles } from "../../src/core/references/projectAst";
+import { prepareProjectRename, renameInProject } from "../../src/core/references/projectRename";
+import { findReferences } from "../../src/core/references/references";
 
 async function main(): Promise<void> {
   const root = process.argv[2]!;
@@ -216,6 +220,69 @@ async function main(): Promise<void> {
     console.log(`namesInScope (auto-import dedup, ${size} names): ${stats(runs)}`);
   }
   console.log(`  (completion runs on the extension host thread) max lag ${lagSince()}`);
+
+  // ---- rename / references with solc's AST -------------------------------------------
+  // A member used in many files: BenchCore.deposit and Position.size, from GEN_FILES test files.
+  const GEN_FILES = Number(process.env["SW_BENCH_FILES"] ?? 60);
+  const genDir = path.join(root, "test/bench-gen");
+  const core = path.join(root, "src/BenchCore.sol");
+  await fs.writeFile(
+    core,
+    `// SPDX-License-Identifier: MIT\npragma solidity ^0.8.24;\nstruct Position {\n    uint256 size;\n}\ncontract BenchCore {\n    mapping(address => Position) public positions;\n    function deposit(uint256 amount) external { positions[msg.sender].size += amount; }\n}\n`,
+  );
+  await fs.mkdir(genDir, { recursive: true });
+  for (let i = 0; i < GEN_FILES; i++) {
+    await fs.writeFile(
+      path.join(genDir, `Use${i}.t.sol`),
+      `// SPDX-License-Identifier: MIT\npragma solidity ^0.8.24;\nimport {BenchCore, Position} from "../../src/BenchCore.sol";\nimport {BenchVault} from "../../src/BenchVault.sol";\ncontract Use${i} {\n    BenchCore internal core;\n    BenchVault internal vault;\n    function run(Position memory p) external {\n        core.deposit(p.size);\n        core.deposit(p.size + ${i});\n        core.deposit(vault.totalAssets());\n    }\n}\n`,
+    );
+  }
+  try {
+    const own = await listOwnFiles(project);
+    const sources = new Map<string, string>();
+    for (const f of own) sources.set(f, await fs.readFile(f, "utf8"));
+    const installed = await listInstalledSolc(svmDirs());
+    let solcMs = 0;
+    let astBytes = 0;
+    const exec = async (solc: string, args: readonly string[], cwd: string, input: string, signal?: AbortSignal) => {
+      const t0 = performance.now();
+      const out = await runProcess(solc, args, { cwd, input, timeoutMs: 120_000, ...(signal ? { signal } : {}) });
+      solcMs += performance.now() - t0;
+      astBytes += out.length;
+      return out;
+    };
+    await settle();
+    const [ast, tAst] = await time(() => compileProjectAst({ project, sources, installed, exec }));
+    const occurrences = [...ast.index.occurrences.values()].reduce((n, l) => n + l.length, 0);
+    console.log(
+      `project AST: ${own.length} own files, ${ast.groups.length} group(s) (${ast.groups.map((g) => g.solc ?? g.requirement).join(", ")}), ${(astBytes / 1e6).toFixed(1)} MB of JSON, ${ast.index.decls.size} declarations, ${occurrences} occurrences`,
+    );
+    console.log(`  ${tAst.toFixed(0)} ms in total: solc ${solcMs.toFixed(0)} ms, JSON.parse + index ${(tAst - solcMs).toFixed(0)} ms (in the extension this runs in the worker); lag here ${lagSince()}`);
+    await settle();
+    const [, tClone] = await time(() => structuredClone(ast));
+    console.log(`  index copied from the worker (structured clone): ${tClone.toFixed(0)} ms; lag ${lagSince()}`);
+
+    const coreText = sources.get(core)!;
+    const depositAt = coreText.indexOf("deposit");
+    await settle();
+    const [refs, tRefs] = await time(() => findReferences(ast.index, core, depositAt, coreText));
+    console.log(`findReferences(deposit): ${refs.length} occurrences in ${new Set(refs.map((r) => r.file)).size} files, ${tRefs.toFixed(1)} ms; lag ${lagSince()}`);
+
+    for (const [label, offset] of [["deposit", depositAt], ["Position.size", coreText.indexOf("size")]] as const) {
+      const prepared = prepareProjectRename(ast, project, sources, core, offset);
+      if (!prepared.ok) throw new Error(prepared.reason);
+      solcMs = 0;
+      const [result, tRename] = await time(() =>
+        renameInProject({ project, ast, sources, target: prepared.target, newName: `${prepared.placeholder}2`, compile: (s) => compileProjectAst({ project, sources: s, installed, exec }), exists: () => false }),
+      );
+      if (!result.ok) throw new Error(result.reason);
+      const edits = [...result.rename.plan.edits.values()].reduce((n, l) => n + l.length, 0);
+      console.log(`rename ${label}: ${edits} edits in ${result.rename.plan.edits.size} files, ${tRename.toFixed(0)} ms (checking compile: solc ${solcMs.toFixed(0)} ms)`);
+    }
+  } finally {
+    await fs.rm(genDir, { recursive: true, force: true });
+    await fs.rm(core, { force: true });
+  }
   clearInterval(ticker);
   await fs.rm(ENTRY);
 }

@@ -7,6 +7,7 @@ import { loadProject, type ProjectModel } from "../../src/core/project/projectMo
 import { applyEdits } from "../../src/core/references/locals";
 import { compileProjectAst, type ProjectAst } from "../../src/core/references/projectAst";
 import { prepareProjectRename, renameInProject } from "../../src/core/references/projectRename";
+import { findReferences } from "../../src/core/references/references";
 
 /**
  * Renames with the real solc on temporary Foundry projects. Skipped when no solc
@@ -254,3 +255,53 @@ describe.skipIf(!has("0.8.0") || !has("0.8.13") || !has("0.8.37"))("project rena
     );
   });
 });
+
+describe.skipIf(!has("0.8.37"))("find references with solc", () => {
+  async function references(files: Record<string, string>): Promise<string[]> {
+    const { project, sources, cursor } = await fixture(files);
+    const ast = await compileWith(project)(sources);
+    return findReferences(ast.index, cursor.file, cursor.offset, sources.get(cursor.file)!)
+      .map((r) => {
+        const text = sources.get(r.file) ?? fs.readFileSync(r.file, "utf8");
+        const line = text.slice(0, r.start).split("\n").length;
+        return `${path.relative(project.root, r.file)}:${line}:${text.slice(r.start, r.end)}${r.declaration ? " (declaration)" : ""}`;
+      })
+      .sort();
+  }
+
+  it("lists uses across files, the override hierarchy and library declarations", async () => {
+    const lib = { "lib/dep/Base.sol": `${P}abstract contract Base {\n    function hook() internal virtual {}\n}\n` };
+    expect(
+      await references({
+        ...lib,
+        "src/C.sol": `${P}import {Base} from "../lib/dep/Base.sol";\ncontract C is Base {\n    function hook() internal virtual override {}\n    function run() external { |hook(); }\n}\n`,
+        "src/D.sol": `${P}import {C} from "./C.sol";\ncontract D is C {\n    function hook() internal override { super.hook(); }\n}\n`,
+      }),
+    ).toEqual([
+      "lib/dep/Base.sol:4:hook (declaration)",
+      "src/C.sol:5:hook (declaration)",
+      "src/C.sol:6:hook",
+      "src/D.sol:5:hook",
+      "src/D.sol:5:hook (declaration)",
+    ]);
+  });
+
+  it("includes uses through an import alias, and lists an alias' own uses", async () => {
+    const files = {
+      "src/Token.sol": `${P}contract Token {}\n`,
+      "src/Use.sol": `${P}import {Token as Tok} from "./Token.sol";\ncontract Use {\n    Tok internal t;\n    Tok internal u;\n}\n`,
+    };
+    expect(await references({ ...files, "src/Token.sol": files["src/Token.sol"].replace("Token {", "|Token {") })).toEqual([
+      "src/Token.sol:3:Token (declaration)",
+      "src/Use.sol:3:Token",
+      "src/Use.sol:5:Tok",
+      "src/Use.sol:6:Tok",
+    ]);
+    expect(await references({ ...files, "src/Use.sol": files["src/Use.sol"].replace("Tok internal u", "|Tok internal u") })).toEqual([
+      "src/Use.sol:3:Tok (declaration)",
+      "src/Use.sol:5:Tok",
+      "src/Use.sol:6:Tok",
+    ]);
+  });
+});
+

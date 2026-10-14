@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.0 — 2026-10-14
+
+- Rename Symbol (`F2`), on by default (`solidityWorkbench.rename.enabled`):
+  - local variables and parameters, instantly and on half-written code, respecting blocks and shadowing, with their `@param` / `@return` tags;
+  - everything else across `src`, `test` and `script` from solc's AST: state variables and getter calls, functions with their whole override hierarchy (interfaces included), modifiers, events, errors, structs and fields (named arguments too), enums and values, user-defined value types, contracts, libraries, constants, free functions and import aliases;
+  - a contract's file is renamed with it, with its import paths, when it declares nothing else;
+  - refused, with the reason, for library symbols, code that does not compile, invalid names and renames that would change what other names refer to: every rename is checked by compiling the result.
+- Find All References, from the tolerant parser for locals and solc's AST for the rest, including uses through import aliases and named arguments.
+- Document Highlight.
+- Go to Definition resolves local variables and members of values (`token.transfer`, `listing.price`), and anything else solc resolves.
+- Projects mixing pragmas are compiled per solc version, like `forge build`; solc ASTs are parsed in a worker thread.
+
 ## 0.3.0 — 2026-10-13
 
 - Language completion, also on half-written code:

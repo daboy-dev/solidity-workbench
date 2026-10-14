@@ -103,10 +103,33 @@ The Outline view, breadcrumbs and *Go to Symbol in Editor* (`Ctrl+Shift+O` / `Cm
   - members of the current contract and of the contracts it inherits from, in any file (`onlyOwner`, `_msgSender`, inherited errors and events), with `super.` and `this.`;
   - qualified names: `Math.max` (every overload), `Errors.Unauthorized`, `Types.Side.Long`, `Alias.Symbol` for `import * as Alias`;
   - library functions attached with `using SafeERC20 for IERC20;` or `using {f} for T;`, e.g. `token.safeTransfer(...)`.
+  - local variables and parameters, respecting blocks and shadowing;
+  - members of values, typed like completion does: `listing.price`, `token.transfer`, `IERC20(a).approve`, `listings[id].seller`, `Side.Long`;
+  - anything else solc resolves (overloads, functions attached with `using ... for` after a value), from the project's AST when the tolerant analysis finds nothing.
+- **Find All References** (`Shift+F12`, `Alt+Shift+F12`): every use of the symbol in `src`, `test` and `script`, with named arguments (`S({field: ...})`), NatSpec tags and the declarations it overrides or is overridden by (also in libraries, so the references of an OpenZeppelin function list your uses of it). On an import alias (`Y` in `import {X as Y}`), the uses of the alias. Local variables are found instantly with the tolerant parser; anything else uses solc's AST of the project (see [Rename Symbol](#rename-symbol)). If part of the project does not compile, the status bar says that the results may be incomplete.
+- **Document Highlight**: the occurrences of the symbol under the cursor. Locals are exact; other symbols use the last AST of the project when the file has not changed since (solc is never started for this), and otherwise every occurrence of the same name in code.
 - **Import paths are links**: `Ctrl/Cmd+click` on `"@openzeppelin/contracts/access/Ownable.sol"` opens the file, resolved with the project's remappings.
 - **Go to Symbol in Workspace** (`Ctrl/Cmd+T`) searches the top-level symbols of every indexed project, dependencies included.
 
 Unsaved changes in open files are taken into account.
+
+## Rename Symbol
+
+`F2` renames the symbol under the cursor; `Shift+Enter` in the rename box shows the preview first, with the edits grouped (the symbol, its overrides and implementations, import paths, file).
+
+- **Local variables and parameters** (named returns, `for`, `try`/`catch` and tuple declarations included) are renamed instantly with the tolerant parser, also in half-written code, respecting blocks and shadowing. `@param` / `@return` tags of the function follow. Renaming a parameter also updates `f({name: ...})` calls in other files when the project compiles.
+- **Everything else** is renamed across the project's own files (`src`, `test`, `script`) using solc's AST: state variables (and getter calls such as `vault.total()`), functions with every override and interface declaration in the hierarchy (other overloads are left alone), modifiers, events, errors, structs and their fields, enums and their values, user-defined value types, contracts, interfaces, libraries, file-level constants and free functions, including named arguments, `using ... for` calls, `emit`/`revert`, inline assembly references and NatSpec (`@param`, `@return`, `@inheritdoc`).
+- **Import aliases**: renaming `X` updates `import {X as Y}` and leaves the uses of `Y`; renaming `Y` changes only its file.
+- **Files**: renaming a contract in a file named after it (`Vault.sol`) that declares nothing else also renames the file and updates every import path pointing to it.
+
+A rename is refused, with the reason, when:
+
+- the new name is not a valid identifier, is a keyword, a type or a global name (`msg`, `this`…);
+- the symbol is declared in `lib/`, or overrides a function declared there (library code is never edited);
+- the project does not compile: the first error is shown. Files that do not compile and cannot use the symbol (they do not import its file, directly or not) are left out, so a broken test elsewhere does not block the rename;
+- the result would not compile (e.g. the name is already declared), or any name would then refer to something else (e.g. a local variable named like the new name would capture it). Every rename is checked by compiling the renamed code before it is applied.
+
+Strings and plain comments are never changed. Files with incompatible pragmas are compiled in groups, one per solc version, like `forge build`; a group needs its solc installed (run `forge build` once).
 
 ## Formatting (optional)
 
@@ -136,7 +159,9 @@ Solidity Workbench does not register a grammar, and works with or without other 
 - Without forge, remappings are inferred with forge's main rules; unusual setups may differ. Install forge, or add a `remappings.txt`, for exact results.
 - Projects without `foundry.toml` (e.g. Hardhat-only) are indexed with Foundry's default layout, so `contracts/` and `node_modules` are only covered when a remapping points at them.
 - Compiler diagnostics need a solc installed by forge (svm) or set in `solidityWorkbench.compiler.solcPath`. `via_ir`, optimizer and other code generation settings are not applied, since only analysis runs.
-- Go to Definition does not resolve local variables, parameters, or members accessed through a value (`token.transfer`) unless they come from a `using ... for` library: that needs type information. Inherited members are searched in declaration order, without solc's exact linearization for diamond hierarchies.
+- Go to Definition types members of values with the tolerant analysis: values of expressions it cannot type (e.g. functions returning several values) are resolved from solc's AST, which needs the project to compile. Inherited members are searched in declaration order, without solc's exact linearization for diamond hierarchies.
+- Rename and Find All References of anything but local variables need the files involved to compile with an installed solc (a group of files whose solc is not installed blocks symbols it can use). Unit aliases (`import "x.sol" as X;` then `X.Name`) are renamed through `X.Name`, but the alias itself cannot be renamed. Yul identifiers declared inside `assembly` cannot be renamed, and renaming a local used in `assembly` to the name of a Yul builtin is not detected.
+- Document Highlight of non-local symbols uses the AST of the last rename, reference search or definition from solc; until then it highlights every occurrence of the same name.
 - Go to Symbol in Workspace lists top-level symbols only.
 - Syntax and compiler diagnostics may duplicate those of another Solidity extension. Turn off `solidityWorkbench.syntaxDiagnostics.enabled` / `solidityWorkbench.compilerDiagnostics.enabled`, or the equivalent in the other extension.
 - Another Solidity extension with its own completions or auto-import may conflict with this one and show a similar suggestion next to ours. Disable the feature in one of them (`solidityWorkbench.completion.enabled`, `solidityWorkbench.autoImport.enabled`) if this is distracting.

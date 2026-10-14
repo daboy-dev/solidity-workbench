@@ -15,6 +15,7 @@ interface CacheEntry {
   readonly fingerprint: string;
   readonly snapshot: SourceSnapshot;
   readonly promise: Promise<ProjectAst>;
+  result?: ProjectAst;
   cancel(): void;
 }
 
@@ -69,9 +70,13 @@ export class ReferenceService implements vscode.Disposable {
         const job = this.client.compile(project.model, snapshot.sources, await installedSolc(), configuredSolc(vscode.Uri.file(root)) ?? project.model.compiler.solc);
         entry = { fingerprint: snapshot.fingerprint, snapshot, promise: job.promise, cancel: job.cancel };
         this.cache.set(root, entry);
-        job.promise.catch(() => {
-          if (this.cache.get(root) === entry) this.cache.delete(root);
-        });
+        const created = entry;
+        job.promise.then(
+          (ast) => (created.result = ast),
+          () => {
+            if (this.cache.get(root) === created) this.cache.delete(root);
+          },
+        );
       }
       try {
         return { ast: await entry.promise, snapshot: entry.snapshot };
@@ -80,6 +85,15 @@ export class ReferenceService implements vscode.Disposable {
         if (!(err instanceof AbortedError) || attempt >= 3) throw err;
       }
     }
+  }
+
+  /**
+   * The last AST of the project if it is ready and `file` has not changed since
+   * (other files may have): for features that must never wait for solc.
+   */
+  peek(project: ProjectHandle, file: string, text: string): ProjectAst | undefined {
+    const entry = this.cache.get(project.model.root);
+    return entry?.result && entry.snapshot.sources.get(file) === text ? entry.result : undefined;
   }
 
   /** Compiles modified contents, without caching (to check a rename). */

@@ -1,13 +1,13 @@
 {
   "name": "solidity-workbench",
   "displayName": "Solidity Workbench",
-  "description": "Auto-import, completion that understands your code, diagnostics while you type and Go to Definition for Solidity and Foundry projects.",
+  "description": "Auto-import, completion that understands your code, diagnostics while you type, rename and references across the project, and Go to Definition for Solidity and Foundry projects.",
   "icon": "images/icon.png",
   "galleryBanner": {
     "color": "#1B1E4B",
     "theme": "dark"
   },
-  "version": "0.3.0",
+  "version": "0.4.0",
   "publisher": "daboy-dev",
   "license": "MIT",
   "repository": {
@@ -34,6 +34,7 @@
     "completion",
     "intellisense",
     "diagnostics",
+    "rename",
     "solc"
   ],
   "main": "./dist/extension.js",
@@ -188,7 +189,7 @@
           "solidityWorkbench.navigation.enabled": {
             "type": "boolean",
             "default": true,
-            "markdownDescription": "Go to Definition (including inherited members, aliases and `Library.member`), clickable import paths and Go to Symbol in Workspace. May conflict with navigation from other Solidity extensions."
+            "markdownDescription": "Go to Definition (including local variables, inherited members, aliases, `Library.member` and members of values such as `token.transfer` or `listing.price`), Find All References and Document Highlight (using solc's AST for anything that is not a local), clickable import paths and Go to Symbol in Workspace. May conflict with navigation from other Solidity extensions."
           }
         }
       },

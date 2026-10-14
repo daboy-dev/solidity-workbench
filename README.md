@@ -31,9 +31,15 @@ The usual Solidity extensions highlight the syntax, but miss the basics you take
 
 - **Errors while you type, without saving**: solc's errors and warnings filtered exactly like `forge build`, and readable syntax errors (*Missing `}` to close `function deposit`*, *Did you mean `contract`?*), with quick fixes for misspelled keywords, missing imports, missing data locations and trailing commas.
 
-- **Go to Definition that follows Solidity**: through imports and aliases, inheritance across files, `super.`, `Library.member` and `using … for` libraries.
+- **Rename and Find All References across the project**: `F2` on a state variable, function, event, error, struct field, enum value or contract updates every file in `src`, `test` and `script`, overrides and interfaces included. Local variables are renamed instantly, even in half-written code. Every rename is checked by compiling the result, and a contract renamed in `Vault.sol` takes its file and import paths along:
 
-Also included: document outline, Go to Symbol in Workspace and clickable import paths. See [all features in detail](docs/features.md).
+  ```solidity
+  function |deposit(uint256 amount) external override { … }   // F2 → stake: IVault, Vault, every call and test
+  ```
+
+- **Go to Definition that follows Solidity**: through imports and aliases, inheritance across files, `super.`, `Library.member`, `using … for` libraries, local variables and members of values (`token.transfer`, `listing.price`).
+
+Also included: document outline, Document Highlight, Go to Symbol in Workspace and clickable import paths. See [all features in detail](docs/features.md).
 
 ## Installation
 
@@ -66,6 +72,7 @@ Parsing runs in background threads and solc in its own process, so the editor is
 | Completion | ~1 ms (auto-import: up to 40 ms on the first letters) |
 | solc check of a contract importing ERC4626, AccessControl and Governor | ~40 ms |
 | Go to Definition through OpenZeppelin's inheritance | under 1 ms (under 100 ms the first time) |
+| Rename a function used 181 times in 61 files (901 times in 301 files) | ~0.2 s (~0.3 s), including the check that the result compiles |
 | Symbol index, first time / from cache | ~14 s / ~0.4 s, in the background |
 
 More measurements and how each part works: [How it works](docs/how-it-works.md).
@@ -83,7 +90,8 @@ More measurements and how each part works: [How it works](docs/how-it-works.md).
 | `solidityWorkbench.compilerDiagnostics.ignoredCodes` | `[]` | Extra warning codes to hide (`2072` or `"unused-var"`), added to `ignored_error_codes`. |
 | `solidityWorkbench.compiler.solcPath` | `""` | solc binary path or installed version to use instead of the automatic choice. |
 | `solidityWorkbench.outline.enabled` | `true` | Provide the document outline. |
-| `solidityWorkbench.navigation.enabled` | `true` | Go to Definition, clickable import paths and Go to Symbol in Workspace. |
+| `solidityWorkbench.navigation.enabled` | `true` | Go to Definition, Find All References, Document Highlight, clickable import paths and Go to Symbol in Workspace. |
+| `solidityWorkbench.rename.enabled` | `true` | Rename Symbol (`F2`) across the project's own files. |
 | `solidityWorkbench.formatting.enabled` | `false` | Format with `forge fmt`. |
 | `solidityWorkbench.index.includeTests` | `true` | Index the project's test folder. |
 | `solidityWorkbench.index.includeScripts` | `true` | Index the project's script folder. |
@@ -98,6 +106,7 @@ Each feature can be turned off with its own `enabled` setting; `index.*` and `fo
 - Other Solidity extensions may show similar suggestions or diagnostics next to ours: turn the feature off in one of them.
 - Compiler diagnostics need a solc installed by forge, or `solidityWorkbench.compiler.solcPath`.
 - Library functions attached with `using … for` are not suggested after a value (`token.safeTransfer`); Go to Definition does find them.
+- Rename and Find All References (except for local variables) need the project to compile with an installed solc; symbols declared in `lib/` are never renamed.
 - Projects without `foundry.toml` are indexed with Foundry's default layout.
 
 [Full list](docs/features.md#known-limitations) · [Changelog](CHANGELOG.md) · [Contributing](CONTRIBUTING.md)
