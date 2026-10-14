@@ -248,3 +248,65 @@ contract C {
     expect(h?.sections[0]?.code).toBe("function mulDiv(uint256 x, uint256 y, uint256 d) internal pure returns (uint256)");
   });
 });
+
+describe("hover on elementary types", () => {
+  it("shows ranges and sizes", async () => {
+    expect(await docOf(inBody("ui|nt8 x;"))).toBe("Unsigned integer of 8 bits: 0 to 255. Members of `type(uint8)`: `min`, `max`.");
+    expect(await docOf(inBody("in|t16 x;"))).toContain("Signed integer of 16 bits: -32768 to 32767.");
+    expect(await docOf(inBody("ui|nt x;"))).toContain("0 to 2**256 - 1. Alias of `uint256`.");
+    expect(await docOf(inBody("in|t256 x;"))).toContain("-2**255 to 2**255 - 1.");
+    expect(await docOf(inBody("byt|es32 x;"))).toBe("Fixed-size byte array of 32 bytes. Members: `length`.");
+    expect(await hover(inBody("addr|ess payable p;"))).toBe("address payable");
+    expect(await hover("pragma solidity ^0.8.20;\ncontract C { function f(bo|ol b) external {} }")).toBe("bool");
+  });
+});
+
+describe("hover with inherited NatSpec", () => {
+  const BASES = `pragma solidity ^0.8.20;
+interface IVault {
+    /// @notice Deposits assets.
+    /// @param assets How much.
+    /// @return shares Minted shares.
+    function deposit(uint256 assets) external returns (uint256 shares);
+}
+`;
+  const impl = (doc: string) => `pragma solidity ^0.8.20;
+import {IVault} from "./IVault.sol";
+contract Vault is IVault {
+    ${doc}
+    function deposit(uint256 assets) external returns (uint256 shares) {}
+    function f() external { this.dep|osit(1); }
+}
+`;
+  const docAt = async (doc: string) => {
+    const files = { "/p/IVault.sol": BASES, "/p/Vault.sol": impl(doc) };
+    const source = files["/p/Vault.sol"];
+    const offset = source.indexOf("|");
+    const text = source.replace("|", "");
+    const h = await hoverAt(parseStructure(text), offset, { version: "0.8.30", path: "/p/Vault.sol", host: memoryHost({ ...files, "/p/Vault.sol": text }) });
+    return h?.sections[0]?.doc ?? "(none)";
+  };
+
+  it("takes the overridden function's NatSpec when there is none", async () => {
+    expect(await docAt("")).toBe("Deposits assets.\n\n*@param* `assets` — How much.\n\n*@return* `shares` — Minted shares.");
+  });
+
+  it("follows @inheritdoc and adds the function's own tags", async () => {
+    expect(await docAt("/// @inheritdoc IVault\n    /// @dev Rounds down.")).toBe(
+      "Deposits assets.\n\nRounds down.\n\n*@param* `assets` — How much.\n\n*@return* `shares` — Minted shares.",
+    );
+  });
+
+  it("keeps its own NatSpec otherwise", async () => {
+    expect(await docAt("/// @notice Mine.")).toBe("Mine.");
+  });
+});
+
+describe("NatSpec comments", () => {
+  it("reads /** */ blocks and ignores plain comments", async () => {
+    const source = (comment: string) => `pragma solidity ^0.8.20;\ncontract C {\n    ${comment}\n    uint256 x;\n    function f() external { x|; }\n}\n`;
+    expect(await docOf(source("/**\n     * @notice Counter.\n     * @dev Starts at zero.\n     */"))).toBe("Counter.\n\nStarts at zero.");
+    expect(await docOf(source("// plain"))).toBe("(none)");
+    expect(await docOf(source("/// @custom:security non-reentrant"))).toBe("*@custom:security* non-reentrant");
+  });
+});

@@ -1,15 +1,15 @@
 import { ABI, BLOCK, CONTRACT_TYPE_INFO, ENUM_TYPE_INFO, EXTERNAL_FUNCTION, GLOBAL_FUNCTIONS, GLOBAL_VALUES, INTERFACE_TYPE_INFO, MSG, TX, UNITS, type Builtin } from "../completion/builtins";
 import { cursorContext, type CursorContext } from "../completion/cursorContext";
-import type { ContractNode, SourceStructure } from "../completion/structure";
-import { structureFile, SymbolResolver, type StructureHost } from "../completion/symbols";
+import type { ContractNode, Decl, SourceStructure } from "../completion/structure";
+import { structureFile, SymbolResolver, type StructureFile, type StructureHost } from "../completion/symbols";
 import type { Token } from "../completion/tokens";
 import { Typer } from "../completion/typing";
-import { elementaryTypeInfo, staticMembers, valueMembers, type ExprType } from "../completion/types";
+import { elementaryTypeInfo, isElementaryType, staticMembers, valueMembers, type ExprType } from "../completion/types";
 import { fromSym, memberDecls, withoutOverridden, type MemberDecl } from "../navigation/memberDefinition";
 import { localSymbolAt, type LocalSymbol } from "../references/locals";
 import { declarationAt, declarationStart, signatureOf } from "./declarations";
-import { builtinSection, unitSection } from "./format";
-import { docCommentBefore, parseNatSpec, renderNatSpec } from "./natspec";
+import { builtinSection, elementaryTypeSection, unitSection } from "./format";
+import { docCommentBefore, parseNatSpec, renderNatSpec, type NatSpec } from "./natspec";
 
 /** One block of a hover: a Solidity code line and its documentation (Markdown). */
 export interface HoverSection {
@@ -61,29 +61,28 @@ export async function hoverAt(structure: SourceStructure, offset: number, env: H
   const typer = typerFor(ctx, env);
   const file = typer.at.file;
   const own = declarationAt(file, token.start);
-  if (own) return result([declarationSection(own, ctx.contract)]);
+  if (own) return result([await declarationSection(own, ctx.contract, typer.resolver)]);
   if (ctx.site.kind === "none") return undefined;
 
   if (ctx.site.kind === "unit") {
     const unit = UNITS.find((u) => u.name === name);
     return result(unit && [unitSection(unit)]);
   }
+  const sectionsOf = (decls: readonly MemberDecl[]) => Promise.all(decls.map((d) => declarationSection(d, ctx.contract, typer.resolver)));
   let sections: readonly HoverSection[] | undefined;
   if (ctx.site.kind === "member") {
     const decls = await memberDecls(typer, ctx.site.receiver, name);
-    sections = decls.length
-      ? overloadsAt(structure, k, decls).map((d) => declarationSection(d, ctx.contract))
-      : await builtinMember(typer, await typer.typeOf(ctx.site.receiver), name, env.version);
+    sections = decls.length ? await sectionsOf(overloadsAt(structure, k, decls)) : await builtinMember(typer, await typer.typeOf(ctx.site.receiver), name, env.version);
   } else {
     const decls = await declarationsNamed(typer, name);
-    sections = decls.length ? overloadsAt(structure, k, decls).map((d) => declarationSection(d, ctx.contract)) : builtinName(ctx, name, env.version);
+    sections = decls.length ? await sectionsOf(overloadsAt(structure, k, decls)) : builtinName(ctx, name, env.version) ?? typeName(structure, k);
   }
   if (sections?.length) return result(sections);
 
   const target = env.ast?.(token.start);
   const targetFile = target && (await typer.resolver.load(target.path));
   const found = targetFile && declarationAt(targetFile, target.nameStart);
-  return result(found ? [declarationSection(found, ctx.contract)] : undefined);
+  return result(found ? await sectionsOf([found]) : undefined);
 }
 
 /** What `name` refers to as an expression or type: members of the enclosing contract first, then file level. */
@@ -132,17 +131,65 @@ function localSection(structure: SourceStructure, local: LocalSymbol): HoverSect
 }
 
 /** A project declaration: its signature, NatSpec, and where it comes from when not from the contract being edited. */
-function declarationSection(ref: MemberDecl, contract: ContractNode | undefined): HoverSection {
+async function declarationSection(ref: MemberDecl, contract: ContractNode | undefined, resolver: SymbolResolver): Promise<HoverSection> {
   const code = signatureOf(ref);
   const notes: string[] = [];
-  const comment = docCommentBefore(ref.file.structure, declarationStart(ref));
-  if (comment) {
-    const returns = ref.decl.returns?.map((r) => r.name ?? "") ?? [];
-    const doc = renderNatSpec(parseNatSpec(comment, returns));
-    if (doc) notes.push(doc);
-  }
+  const spec = await natSpecOf(ref, resolver, 0);
+  const doc = spec && renderNatSpec(spec);
+  if (doc) notes.push(doc);
   if (ref.owner && ref.owner !== contract) notes.push(`*Declared in \`${ref.owner.decl.name}\` (${basename(ref.file.path)}).*`);
   return notes.length ? { code, doc: notes.join("\n\n") } : { code };
+}
+
+const MAX_INHERITANCE = 8;
+
+/**
+ * A declaration's NatSpec. As solc does, a function without NatSpec takes the documentation
+ * of the function it overrides, and `@inheritdoc Base` takes Base's, then adds its own tags.
+ */
+async function natSpecOf(ref: MemberDecl, resolver: SymbolResolver, depth: number): Promise<NatSpec | undefined> {
+  const comment = docCommentBefore(ref.file.structure, declarationStart(ref));
+  const own = comment ? parseNatSpec(comment, ref.decl.returns?.map((r) => r.name ?? "") ?? []) : undefined;
+  if (ref.decl.kind !== "function" || !ref.owner || depth > MAX_INHERITANCE || (own && !own.inheritdoc)) return own;
+  const base = await overridden(ref, ref.owner, resolver, own?.inheritdoc);
+  const inherited = base && (await natSpecOf(base, resolver, depth + 1));
+  return own ? mergeNatSpec(inherited, own) : inherited;
+}
+
+/** The function `ref` overrides: in contract `baseName` (or its bases), or in the nearest base that has one. */
+async function overridden(ref: MemberDecl, owner: ContractNode, resolver: SymbolResolver, baseName: string | undefined): Promise<MemberDecl | undefined> {
+  const params = paramTypes(ref.decl);
+  const match = async (file: StructureFile, contract: ContractNode) => {
+    const sym = (await resolver.members(file, contract)).find((s) => s.name === ref.decl.name && s.decl.kind === "function" && paramTypes(s.decl) === params);
+    return sym && fromSym(sym);
+  };
+  if (baseName) {
+    const sym = await resolver.resolvePath({ file: ref.file, contract: owner }, baseName, false);
+    const node = sym && resolver.contractOf(sym);
+    return sym && node ? match(sym.file, node) : undefined;
+  }
+  for (const base of await resolver.bases(ref.file, owner)) {
+    const found = await match(base.file, base.contract);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+function paramTypes(decl: Decl): string {
+  return (decl.params ?? []).map((p) => p.type).join(",");
+}
+
+/** `own` on top of `base`: own tags win, parameters and returns are taken from the base when not redocumented. */
+function mergeNatSpec(base: NatSpec | undefined, own: NatSpec): NatSpec {
+  if (!base) return own;
+  const { inheritdoc: _, ...rest } = own;
+  return {
+    ...base,
+    ...Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined && !(Array.isArray(v) && v.length === 0))),
+    params: [...own.params, ...base.params.filter((p) => !own.params.some((o) => o.name === p.name))],
+    returns: own.returns.length ? own.returns : base.returns,
+    custom: [...base.custom, ...own.custom],
+  };
 }
 
 function basename(p: string): string {
@@ -187,6 +234,15 @@ function builtinName(ctx: CursorContext, name: string, version: string): HoverSe
   if (ctx.locals.some((d) => d.name === name)) return undefined;
   const global = GLOBAL_FUNCTIONS.find((b) => b.name === name) ?? GLOBAL_VALUES.find((b) => b.name === name);
   return global && [builtinSection(global, version)];
+}
+
+/** An elementary type name: `uint8`, `bytes32`, `address payable`. */
+function typeName(structure: SourceStructure, k: number): HoverSection[] | undefined {
+  const name = structure.tokens[k]!.text;
+  if (!isElementaryType(name)) return undefined;
+  const payable = name === "address" && structure.tokens[k + 1]?.text === "payable";
+  const section = elementaryTypeSection(payable ? "address payable" : name);
+  return section && [section];
 }
 
 /** `object.name` for a built-in member of what `object` is. */

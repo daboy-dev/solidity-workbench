@@ -39,6 +39,8 @@ The usual Solidity extensions highlight the syntax, but miss the basics you take
 
 - **Go to Definition that follows Solidity**: through imports and aliases, inheritance across files, `super.`, `Library.member`, `using … for` libraries, local variables and members of values (`token.transfer`, `listing.price`).
 
+- **Hover with signatures and NatSpec**: functions, events, errors, structs and variables of your project and its libraries show their declaration and documentation (inherited through `@inheritdoc` too), and builtins such as `msg.sender` or `abi.encode` show their type and docs for your solc version.
+
 Also included: document outline, Document Highlight, Go to Symbol in Workspace and clickable import paths. See [all features in detail](docs/features.md).
 
 ## Installation
@@ -72,6 +74,7 @@ Parsing runs in background threads and solc in its own process, so the editor is
 | Completion | ~1 ms (auto-import: up to 40 ms on the first letters) |
 | solc check of a contract importing ERC4626, AccessControl and Governor | ~40 ms |
 | Go to Definition through OpenZeppelin's inheritance | under 1 ms (under 100 ms the first time) |
+| Hover through OpenZeppelin's inheritance | ~1 ms |
 | Rename a function used 181 times in 61 files (901 times in 301 files) | ~0.2 s (~0.3 s), including the check that the result compiles |
 | Symbol index, first time / from cache | ~14 s / ~0.4 s, in the background |
 
@@ -104,9 +107,9 @@ Each feature can be turned off with its own `enabled` setting; `index.*` and `fo
 
 ## Known limitations
 
-- Other Solidity extensions may show similar suggestions or diagnostics next to ours: turn the feature off in one of them.
+- Other Solidity extensions may show similar suggestions, hovers or diagnostics next to ours: turn the feature off in one of them.
 - Compiler diagnostics need a solc installed by forge, or `solidityWorkbench.compiler.solcPath`.
-- Library functions attached with `using … for` are not suggested after a value (`token.safeTransfer`); Go to Definition does find them.
+- Library functions attached with `using … for` are not suggested after a value (`token.safeTransfer`); Go to Definition does find them, and hover once the project has been compiled for references or rename.
 - Rename and Find All References (except for local variables) need the project to compile with an installed solc; symbols declared in `lib/` are never renamed.
 - Projects without `foundry.toml` are indexed with Foundry's default layout.
 

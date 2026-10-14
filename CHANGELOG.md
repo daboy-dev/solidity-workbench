@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.0 — 2026-10-14
+
+- Hover, on by default (`solidityWorkbench.hover.enabled`), without running solc:
+  - built-in globals and members (`msg.sender`, `block.timestamp`, `abi.encode`, `keccak256`, `addr.balance`, `type(X).max`, units) with their type and documentation, following the file's solc version (not yet available, deprecated);
+  - ranges and sizes of elementary types;
+  - declarations of local variables, parameters, state variables, constants, functions, modifiers, events, errors, structs, enums and contracts, across imports and inheritance, with their NatSpec; parameters show their `@param` text;
+  - inherited documentation: functions without NatSpec take it from the function they override, and `@inheritdoc` is followed;
+  - overloads chosen by the number of arguments; `using ... for` members from solc's AST when it is already built.
+
 ## 0.4.0 — 2026-10-14
 
 - Rename Symbol (`F2`), on by default (`solidityWorkbench.rename.enabled`):

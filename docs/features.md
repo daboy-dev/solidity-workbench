@@ -96,6 +96,18 @@ While you type, the file is checked with **solc**, unsaved changes included, a m
 
 The Outline view, breadcrumbs and *Go to Symbol in Editor* (`Ctrl+Shift+O` / `Cmd+Shift+O`) list contracts, interfaces and libraries with their functions, modifiers, events, errors, state variables, structs and enums, plus file-level declarations. The outline keeps working while the file has syntax errors.
 
+## Hover
+
+Hovering a name shows what it is, without running solc:
+
+- **Built-ins**: type and documentation of `msg.sender`, `block.timestamp`, `tx.origin`, `abi.encode`, global functions (`keccak256`, `require`, `ecrecover`…), members of addresses, arrays, `bytes`/`string` and function pointers (`addr.balance`, `xs.length`, `f.selector`), `type(X)` members and units (`1 ether`, `2 days`). Like completion, it follows the file's solc version: `block.prevrandao` before 0.8.18 says it is not available yet, `block.difficulty` from 0.8.18 and `transfer`/`send` from 0.8.31 show their deprecation.
+- **Elementary types**: the range of `uint8`…`int256` (`uint` is `uint256`), the size of `bytesN`, the members of `address` and `address payable`.
+- **Project symbols**: the declaration of local variables, parameters, state variables (with their initializer for constants), functions, modifiers, events, errors, structs with their fields, enums with their values and contracts with their bases, followed by their NatSpec (`@notice`, `@dev`, `@param`, `@return`, `@title`, `@author`, `@custom:…`). A parameter shows its own `@param` line. Members of values (`token.transfer`, `listing.price`), inherited members, `super.` and imported names are resolved like Go to Definition; a member from another contract says where it is declared.
+- **Inherited documentation**: as solc does, a function without NatSpec shows the documentation of the function it overrides, and `@inheritdoc Base` takes Base's documentation and adds the function's own tags.
+- **Overloads**: on a call, the overload taking that many arguments; otherwise every overload. Base functions hidden by an override are not listed.
+
+What the tolerant parser cannot resolve (functions attached with `using ... for` after a value, such as `token.safeTransfer`) is taken from the project's solc AST when it is already built for the current text, for example after Find All References or a rename. Hover never starts solc. Unsaved changes are taken into account.
+
 ## Navigation
 
 - **Go to Definition** (`F12`, `Ctrl/Cmd+click`) on:
@@ -154,6 +166,7 @@ Solidity Workbench does not register a grammar, and works with or without other 
 
 - Auto-import offers top-level declarations only. Members such as `Library.function` are completed after `Library.` once the library is imported.
 - Language completion does not suggest library functions attached with `using ... for` after a value (`token.safeTransfer`), nor Yul inside `assembly` blocks. Calls are typed by their declared return when it is a single value; with overloads, the first one is used to rank arguments.
+- Hover shows `using ... for` functions after a value only once solc's AST of the project is built (Find All References, Rename) and the file has not changed since. NatSpec is shown as written: references such as `{IERC20-transfer}` are not turned into links. Yul inside `assembly` blocks has no hover.
 - The index reflects files on disk: symbols added to another file appear once it is saved.
 - `import "x.sol";` puts every symbol of `x.sol` in scope and those are not suggested again. Symbols that `x.sol` itself imports, which solc also brings into scope, may still be suggested.
 - Without forge, remappings are inferred with forge's main rules; unusual setups may differ. Install forge, or add a `remappings.txt`, for exact results.

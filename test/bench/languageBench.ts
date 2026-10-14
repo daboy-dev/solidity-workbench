@@ -9,6 +9,7 @@ import { cursorContext } from "../../src/core/completion/cursorContext";
 import { parseStructure } from "../../src/core/completion/structure";
 import { structureFile, type StructureFile, type StructureHost } from "../../src/core/completion/symbols";
 import { listInstalledSolc, svmDirs } from "../../src/core/compiler/solcVersions";
+import { hoverAt } from "../../src/core/hover/hover";
 import { findDefinitions, sourceFile, type SourceFile, type SourceHost } from "../../src/core/navigation/definitions";
 import { loadProject } from "../../src/core/project/projectModel";
 import { analyzeDocument } from "../../src/core/solidity/analyzeDocument";
@@ -221,6 +222,58 @@ async function main(): Promise<void> {
   }
   console.log(`  (completion runs on the extension host thread) max lag ${lagSince()}`);
 
+  // Hover: probes through OpenZeppelin's inheritance, every name of large files, and half-written code.
+  await settle();
+  {
+    const entry = parseStructure(ENTRY_TEXT);
+    const env = { version: "0.8.30", path: ENTRY, host: structureHost };
+    for (const needle of ["totalAssets()", "_grantRole(", "Math.min", "KEEPER)", "_msgSender()", "keccak256", "safeTransfer(", "asset_)"]) {
+      const offset = ENTRY_TEXT.indexOf(needle) + (needle.startsWith("Math.") ? 6 : 1);
+      const [h, tCold] = await time(() => hoverAt(entry, offset, env));
+      const warm: number[] = [];
+      for (let i = 0; i < 5; i++) warm.push((await time(() => hoverAt(entry, offset, env)))[1]);
+      const what = h ? `${h.sections[0]!.code.split("\n")[0]!.slice(0, 50)}${h.sections[0]!.doc ? " + doc" : ""}` : "(none)";
+      console.log(`hover ${needle.padEnd(16)} → ${what.padEnd(58)} first ${tCold.toFixed(1)} ms, then ${stats(warm)}`);
+    }
+    console.log(`  max lag ${lagSince()}`);
+    for (const rel of ["lib/openzeppelin-contracts/contracts/governance/Governor.sol", "lib/openzeppelin-contracts/contracts/token/ERC20/extensions/ERC4626.sol"]) {
+      const file = path.join(root, rel);
+      const text = await fs.readFile(file, "utf8").catch(() => undefined);
+      if (text === undefined) continue;
+      const structure = parseStructure(text);
+      const runs: number[] = [];
+      let shown = 0;
+      for (const t of structure.tokens) {
+        if (t.kind !== "ident") continue;
+        const [h, ms] = await time(() => hoverAt(structure, t.start + 1, { version: "0.8.30", path: file, host: structureHost }));
+        runs.push(ms);
+        if (h) shown++;
+      }
+      console.log(`hover every name of ${path.basename(rel)}: ${shown}/${runs.length} with a hover, ${stats(runs)}; max lag ${lagSince()}`);
+    }
+    // Robustness: files cut short at many points, hovered at many names. Nothing may throw.
+    let hovers = 0;
+    let failures = 0;
+    const libFiles = (await listSol(path.join(root, "lib/openzeppelin-contracts/contracts"))).slice(0, 120);
+    for (const file of libFiles) {
+      const text = await fs.readFile(file, "utf8");
+      for (let cut = 1; cut <= 8; cut++) {
+        const part = text.slice(0, Math.floor((text.length * cut) / 9));
+        const structure = parseStructure(part);
+        const idents = structure.tokens.filter((t) => t.kind === "ident");
+        for (let i = 0; i < idents.length; i += Math.max(1, Math.floor(idents.length / 25))) {
+          hovers++;
+          try {
+            await hoverAt(structure, idents[i]!.start, { version: "0.8.30", path: file, host: structureHost });
+          } catch (err) {
+            if (failures++ < 5) console.log(`  hover threw in ${path.basename(file)} at ${idents[i]!.start}: ${String(err)}`);
+          }
+        }
+      }
+    }
+    console.log(`hover robustness: ${hovers} hovers on ${libFiles.length} files cut at 8 points, ${failures} exceptions; max lag ${lagSince()}`);
+  }
+
   // ---- rename / references with solc's AST -------------------------------------------
   // A member used in many files: BenchCore.deposit and Position.size, from GEN_FILES test files.
   const GEN_FILES = Number(process.env["SW_BENCH_FILES"] ?? 60);
@@ -285,6 +338,16 @@ async function main(): Promise<void> {
   }
   clearInterval(ticker);
   await fs.rm(ENTRY);
+}
+
+async function listSol(dir: string): Promise<string[]> {
+  const out: string[] = [];
+  for (const e of await fs.readdir(dir, { withFileTypes: true }).catch(() => [])) {
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) out.push(...(await listSol(p)));
+    else if (e.name.endsWith(".sol")) out.push(p);
+  }
+  return out;
 }
 
 void main();
