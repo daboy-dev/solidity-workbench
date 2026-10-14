@@ -193,8 +193,19 @@
         }
       },
       {
-        "title": "Formatting",
+        "title": "Rename",
         "order": 9,
+        "properties": {
+          "solidityWorkbench.rename.enabled": {
+            "type": "boolean",
+            "default": true,
+            "markdownDescription": "Rename Symbol (F2) for local variables and parameters, respecting blocks and shadowing, and their `@param` / `@return` NatSpec tags. May conflict with renaming from other Solidity extensions."
+          }
+        }
+      },
+      {
+        "title": "Formatting",
+        "order": 10,
         "properties": {
           "solidityWorkbench.formatting.enabled": {
             "type": "boolean",

@@ -3,6 +3,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { subsequenceFilter } from "../../core/candidates";
 import { findDefinitions, importPathRange, type DefinitionTarget } from "../../core/navigation/definitions";
+import { localSymbolAt } from "../../core/references/locals";
 import { analyzeFile } from "../../core/solidity/fileAnalysis";
 import type { IndexedSymbol } from "../../core/index/symbolIndex";
 import { createSourceHost, documentSource, positionIn } from "../../host/sourceHost";
@@ -10,7 +11,7 @@ import type { WorkbenchCore } from "../../host/workbenchCore";
 import { symbolKindOf } from "./symbolKinds";
 import { SOLIDITY_SELECTOR, type Feature } from "../feature";
 
-/** Go to Definition, clickable import paths and Go to Symbol in Workspace. */
+/** Go to Definition (local variables and parameters included), clickable import paths and Go to Symbol in Workspace. */
 export const navigationFeature: Feature = {
   id: "navigation",
   activate(core: WorkbenchCore): vscode.Disposable {
@@ -26,6 +27,13 @@ class DefinitionProvider implements vscode.DefinitionProvider {
   constructor(private readonly core: WorkbenchCore) {}
 
   async provideDefinition(document: vscode.TextDocument, position: vscode.Position): Promise<vscode.LocationLink[]> {
+    const local = localSymbolAt(this.core.structures.structure(document), document.offsetAt(position));
+    if (local) {
+      const text = document.getText();
+      const { start, end } = local.declaration;
+      const target: DefinitionTarget = { path: document.uri.fsPath, start, end, nameStart: start, nameEnd: end, text };
+      return [toLink(target, document.getWordRangeAtPosition(position, /[A-Za-z_$][\w$]*/))];
+    }
     const file = await documentSource(this.core, document);
     if (!file) return [];
     const project = await this.core.projectFor(document.uri);
