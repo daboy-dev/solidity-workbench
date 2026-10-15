@@ -111,7 +111,7 @@ function overloadsAt(structure: SourceStructure, k: number, decls: readonly Memb
     else if (t === ")" || t === "]" || t === "}") depth--;
     else if (t === "," && depth === 0) args++;
   }
-  const matching = decls.filter((d) => (d.decl.params?.length ?? 0) === args);
+  const matching = decls.filter((d) => (d.decl.params?.length ?? 0) - (d.bound ? 1 : 0) === args);
   return matching.length ? matching : decls;
 }
 

@@ -19,12 +19,15 @@ export interface MemberDecl {
   readonly owner?: ContractNode;
   /** The struct or enum declaring it, for fields and enum values. */
   readonly parent?: Decl;
+  /** Attached with `using ... for`: called on a value that is its first argument. */
+  readonly bound?: boolean;
 }
 
 /**
  * Resolves `object.member` at `offset` with the tolerant parser and the completion
  * typer: struct fields, contract and interface members (inherited ones included),
- * library and unit-alias members, enum values, `this.f` and `super.f`.
+ * library and unit-alias members, enum values, `this.f`, `super.f` and functions
+ * attached with `using ... for`.
  * Undefined when the cursor is not on a member or its object cannot be typed.
  */
 export async function memberDefinition(structure: SourceStructure, offset: number, path: string, host: StructureHost): Promise<MemberTarget | undefined> {
@@ -65,9 +68,9 @@ export async function memberDecls(typer: Typer, receiver: Expr, name: string): P
   switch (type?.kind) {
     case "value": {
       const sym = await typer.typeSym(type);
-      if (!sym) return [];
-      if (sym.decl.kind === "struct") return field(sym);
-      return isContractKind(sym.decl.kind) ? named(sym) : [];
+      const own = !sym ? [] : sym.decl.kind === "struct" ? field(sym) : isContractKind(sym.decl.kind) ? await named(sym) : [];
+      if (own.length) return own;
+      return withoutOverridden(await typer.attached(type, name)).map((d) => ({ ...d, bound: true }));
     }
     case "static": {
       const owner = type.sym;

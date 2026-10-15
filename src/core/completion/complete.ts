@@ -28,7 +28,7 @@ import {
 } from "./keywords";
 import { DATA_LOCATIONS, type ContractNode, type Decl, type DeclKind, type Param } from "./structure";
 import { structureFile, SymbolResolver, type StructureFile, type StructureHost, type Sym, type TypeScope } from "./symbols";
-import { canonicalType, elementaryTypeInfo, ELEMENTARY_TYPES, isReferenceType, staticMembers, valueMembers, type ExprType } from "./types";
+import { canonicalType, compatible, elementaryTypeInfo, ELEMENTARY_TYPES, isReferenceType, staticMembers, valueMembers, type ExprType } from "./types";
 import { Typer } from "./typing";
 
 export type EntryKind =
@@ -380,7 +380,8 @@ class Session {
       if (decl.kind === "event" || decl.kind === "error") return [...(decl.params ?? [])];
       return undefined;
     }
-    if (type?.kind === "function") return [...(type.sym.decl.params ?? [])];
+    // An attached function's first parameter is the value it is called on.
+    if (type?.kind === "function") return (type.sym.decl.params ?? []).slice(type.bound ? 1 : 0);
     return undefined;
   }
 
@@ -429,13 +430,18 @@ class Session {
     switch (type.kind) {
       case "value": {
         const sym = await this.typer.typeSym(type);
-        if (!sym) return this.builtinMembers(type);
-        if (sym.decl.kind === "struct") {
+        if (!sym) this.builtinMembers(type);
+        else if (sym.decl.kind === "struct") {
           for (const f of sym.decl.members ?? []) out.add({ label: f.name, kind: "field", rank: RANK.member, ...(f.type ? { detail: f.type } : {}) });
-          return;
+        } else {
+          const node = this.resolver.contractOf(sym);
+          if (node) await this.contractMembers(sym.file, node, (d) => isExternallyVisible(d));
         }
-        const node = this.resolver.contractOf(sym);
-        if (node) await this.contractMembers(sym.file, node, (d) => isExternallyVisible(d));
+        // Functions attached with `using ... for`, without the first parameter the value fills.
+        for (const fn of await this.typer.attached(type)) {
+          const from = fn.owner ? ` from \`${fn.owner.decl.name}\`` : "";
+          out.add({ label: fn.name, kind: "method", rank: RANK.member, detail: detailOf(fn.decl, 1)!, documentation: `Attached with \`using ... for\`${from}.` });
+        }
         return;
       }
       case "static": {
@@ -571,13 +577,14 @@ const ENTRY_KINDS: Readonly<Record<DeclKind, EntryKind>> = {
   module: "namespace",
 };
 
-function detailOf(decl: Decl): string | undefined {
+/** `skip`: leading parameters left out (the value a function attached with `using ... for` is called on). */
+function detailOf(decl: Decl, skip = 0): string | undefined {
   switch (decl.kind) {
     case "function":
     case "modifier":
     case "event":
     case "error": {
-      const params = `(${(decl.params ?? []).map(formatParam).join(", ")})`;
+      const params = `(${(decl.params ?? []).slice(skip).map(formatParam).join(", ")})`;
       const returns = decl.returns?.length ? ` returns (${decl.returns.map(formatParam).join(", ")})` : "";
       return `${decl.name}${params}${returns}`;
     }
@@ -616,21 +623,6 @@ function rankFor(entry: CompletionEntry, type: string | undefined, expected: Exp
   if (nameFits && typeFits !== false) return RANK.match;
   if (typeFits) return RANK.compatible;
   return entry.rank;
-}
-
-/** True when a value of type `actual` can be used where `expected` is (implicitly convertible). */
-export function compatible(actual: string, expected: string): boolean {
-  const a = canonicalType(actual.replace(/\s+(memory|storage|calldata)$/, ""));
-  const e = canonicalType(expected.replace(/\s+(memory|storage|calldata)$/, ""));
-  if (a === e) return true;
-  if (a === "address payable" && e === "address") return true;
-  const ints = (t: string) => /^(u?)int(\d+)$/.exec(t);
-  const ai = ints(a);
-  const ei = ints(e);
-  if (ai && ei) return ai[1] === ei[1] && Number(ai[2]) <= Number(ei[2]);
-  // User-defined types written with different qualifications (`Lib.Config` and `Config`).
-  const last = (t: string) => t.split(".").at(-1);
-  return /^[A-Z_$]/i.test(a) && !a.includes("(") && last(a) === last(e);
 }
 
 /** `nftAddress_`, `_nftAddress` and `nftAddress` name the same thing. */

@@ -3,6 +3,7 @@ import type { Expr } from "./cursorContext";
 import type { Decl } from "./structure";
 import { isContractKind, type Sym, type SymbolResolver, type TypeScope } from "./symbols";
 import { builtinTypeOf, indexedType, isElementaryType, valueMembers, type ExprType } from "./types";
+import { attachedFunctions } from "./usingFor";
 
 /**
  * Types expressions at the cursor: parameters and locals, members of the
@@ -83,18 +84,18 @@ export class Typer {
         const sym = await this.typeSym(object);
         if (!sym) {
           // Elementary values: address members, array length...
-          return builtinValueMember(object.type, name);
-        }
-        if (sym.decl.kind === "struct") {
+          const builtin = builtinValueMember(object.type, name);
+          if (builtin) return builtin;
+        } else if (sym.decl.kind === "struct") {
           const field = sym.decl.members?.find((f) => f.name === name);
-          return field?.type ? value(field.type, this.resolver.declScope(sym)) : undefined;
-        }
-        if (isContractKind(sym.decl.kind)) {
+          if (field) return field.type ? value(field.type, this.resolver.declScope(sym)) : undefined;
+        } else if (isContractKind(sym.decl.kind)) {
           // Functions, and public state variables read through their getters.
           const member = await this.resolver.memberNamed(sym, name);
-          return member && (member.decl.kind === "function" || member.decl.type) ? { kind: "function", sym: member, external: true } : undefined;
+          if (member) return member.decl.kind === "function" || member.decl.type ? { kind: "function", sym: member, external: true } : undefined;
         }
-        return undefined;
+        const [attached] = await this.attached(object, name);
+        return attached ? { kind: "function", sym: attached, external: false, bound: true } : undefined;
       }
       case "static": {
         const owner = object.sym;
@@ -134,6 +135,15 @@ export class Typer {
         if (global) return global.type ? value(global.type) : undefined;
       }
     }
+    // `T.wrap(x)` and `T.unwrap(t)` of a user-defined value type.
+    if (callee.kind === "member" && (callee.name === "wrap" || callee.name === "unwrap")) {
+      const owner = await this.typeOf(callee.object);
+      if (owner?.kind === "static" && owner.sym?.decl.kind === "type") {
+        const scope = this.resolver.declScope(owner.sym);
+        if (callee.name === "wrap") return value(owner.type, scope);
+        return owner.sym.decl.type ? value(owner.sym.decl.type, scope) : undefined;
+      }
+    }
     const type = await this.typeOf(callee);
     if (!type) return undefined;
     if (type.kind === "static") {
@@ -160,6 +170,12 @@ export class Typer {
     let type = decl.type;
     while (type.startsWith("mapping(") || type.endsWith("]")) type = indexedType(type) ?? type;
     return value(type, this.resolver.declScope(sym));
+  }
+
+  /** Functions attached to a value with `using ... for` where the cursor is (named `name`, when given). */
+  async attached(object: Extract<ExprType, { kind: "value" }>, name?: string): Promise<Sym[]> {
+    const sym = await this.typeSym(object);
+    return attachedFunctions(this.resolver, this.at, sym ? { type: object.type, sym } : { type: object.type }, name);
   }
 
   /** The declaration of a user-defined value type (struct, contract, enum...), if any. */

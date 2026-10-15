@@ -48,6 +48,21 @@ export function isReferenceType(type: string): boolean {
   return !isElementaryType(type) && !type.startsWith("function");
 }
 
+/** True when a value of type `actual` can be used where `expected` is (implicitly convertible). */
+export function compatible(actual: string, expected: string): boolean {
+  const a = canonicalType(actual.replace(/\s+(memory|storage|calldata)$/, ""));
+  const e = canonicalType(expected.replace(/\s+(memory|storage|calldata)$/, ""));
+  if (a === e) return true;
+  if (a === "address payable" && e === "address") return true;
+  const ints = (t: string) => /^(u?)int(\d+)$/.exec(t);
+  const ai = ints(a);
+  const ei = ints(e);
+  if (ai && ei) return ai[1] === ei[1] && Number(ai[2]) <= Number(ei[2]);
+  // User-defined types written with different qualifications (`Lib.Config` and `Config`).
+  const last = (t: string) => t.split(".").at(-1);
+  return /^[A-Z_$]/i.test(a) && !a.includes("(") && last(a) === last(e);
+}
+
 /** `uint` is `uint256`, `int` is `int256`. */
 export function canonicalType(type: string): string {
   if (type === "uint") return "uint256";
@@ -68,7 +83,7 @@ export type ExprType =
   /** A type or unit alias used as an expression: `bytes.concat`, `Lib.f`, `Color.Red`, `Alias.Token`. */
   | { readonly kind: "static"; readonly type: string; readonly sym?: Sym }
   /** A function used as a value (`this.f.selector`), or called (its returns). */
-  | { readonly kind: "function"; readonly sym: Sym; readonly external: boolean }
+  | { readonly kind: "function"; readonly sym: Sym; readonly external: boolean; /** Attached with `using ... for`: the value is its first argument. */ readonly bound?: boolean }
   | { readonly kind: "this" }
   | { readonly kind: "super" };
 

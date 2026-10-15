@@ -80,6 +80,20 @@ export interface ContractNode {
   readonly bodyStart: number;
   readonly end: number;
   readonly members: readonly Decl[];
+  /** `using ... for` directives of the contract body (not inherited by derived contracts). */
+  readonly usings: readonly UsingDirective[];
+}
+
+/** `using L for T;`, `using {f, L.g, L.h as +} for T global;`, `using L for *;`. */
+export interface UsingDirective {
+  /** The library, as written, for `using L for T`. */
+  readonly library?: string;
+  /** The functions listed, as written (`f`, `L.g`), for `using {...} for T`; those bound to an operator are left out. */
+  readonly functions?: readonly string[];
+  /** The type as written, or `*`. */
+  readonly target: string;
+  readonly global: boolean;
+  readonly start: number;
 }
 
 export type ContainerKind = "contract" | "struct" | "enum" | "body" | "assembly";
@@ -121,6 +135,8 @@ export interface SourceStructure {
   /** File-level declarations, contracts included. */
   readonly fileDecls: readonly Decl[];
   readonly contracts: readonly ContractNode[];
+  /** File-level `using ... for` directives. */
+  readonly usings: readonly UsingDirective[];
   readonly callables: readonly Callable[];
   readonly containers: readonly Container[];
   readonly scopes: readonly LocalScope[];
@@ -161,6 +177,7 @@ export function parseStructure(text: string): SourceStructure {
     pairs,
     fileDecls: p.fileDecls,
     contracts: p.contracts,
+    usings: p.usings,
     callables: p.callables,
     containers: p.containers,
     scopes: p.scopes,
@@ -215,6 +232,7 @@ export function typeText(tokens: readonly Token[], from: number, to: number): st
 class StructureParser {
   readonly fileDecls: Decl[] = [];
   readonly contracts: ContractNode[] = [];
+  readonly usings: UsingDirective[] = [];
   readonly callables: Callable[] = [];
   readonly containers: Container[] = [];
   readonly scopes: LocalScope[] = [];
@@ -375,17 +393,18 @@ class StructureParser {
       }
     }
     const members: Decl[] = [];
+    const usings: UsingDirective[] = [];
     const decl: Decl = { name: nameTok?.text ?? "", kind, nameStart: nameTok?.start ?? this.t[start]!.start, visibleFrom: 0, members, bases };
     this.fileDecls.push(decl);
     if (!this.is(i, "{")) {
       this.span("file", start, i, false);
-      this.contracts.push({ decl, start: this.t[start]!.start, bodyStart: this.endOf(i), end: this.endOf(i), members });
+      this.contracts.push({ decl, start: this.t[start]!.start, bodyStart: this.endOf(i), end: this.endOf(i), members, usings });
       return i;
     }
     this.span("file", start, i, true);
     const open = i;
     const close = Math.min(this.pairs.close[open]!, this.n);
-    const node: ContractNode = { decl, start: this.t[start]!.start, bodyStart: this.t[open]!.end, end: this.groupEnd(open), members };
+    const node: ContractNode = { decl, start: this.t[start]!.start, bodyStart: this.t[open]!.end, end: this.groupEnd(open), members, usings };
     let k = open + 1;
     while (k < close) {
       if (CONTRACT_KEYWORDS.has(this.t[k]!.text) || this.is(k, "pragma") || this.is(k, "import")) {
@@ -404,6 +423,51 @@ class StructureParser {
   }
 
   // ---- members (contract or file level) -----------------------------------
+
+  /** The `using` directive spanning tokens [i, end), when it is complete enough to know its target. */
+  private using(i: number, end: number): UsingDirective | undefined {
+    let k = i + 1;
+    let library: string | undefined;
+    let functions: string[] | undefined;
+    if (this.is(k, "{")) {
+      functions = [];
+      const close = Math.min(this.pairs.close[k]!, end);
+      let item: string[] = [];
+      let operator = false;
+      const flush = () => {
+        if (item.length && !operator) functions!.push(item.join(""));
+        item = [];
+        operator = false;
+      };
+      for (let j = k + 1; j < close; j++) {
+        const t = this.t[j]!.text;
+        if (t === ",") flush();
+        else if (t === "as") operator = true;
+        else if (!operator && (this.ident(j) || t === ".")) item.push(t);
+      }
+      flush();
+      k = this.after(k);
+    } else if (this.ident(k) && !this.is(k, "for")) {
+      let j = k + 1;
+      while (this.is(j, ".") && this.ident(j + 1)) j += 2;
+      library = typeText(this.t, k, j);
+      k = j;
+    } else return undefined;
+    if (!this.is(k, "for")) return undefined;
+    k++;
+    let target: string;
+    if (this.is(k, "*")) {
+      target = "*";
+      k++;
+    } else {
+      const typeEnd = this.parseType(k, end);
+      if (typeEnd <= k) return undefined;
+      target = typeText(this.t, k, typeEnd);
+      k = typeEnd;
+    }
+    const global = this.is(k, "global");
+    return { ...(library ? { library } : {}), ...(functions ? { functions } : {}), target, global, start: this.t[i]!.start };
+  }
 
   private memberStatement(i: number, end: number, container: "file" | "contract", owner: ContractNode | undefined): { next: number } {
     const target = owner ? (owner.members as Decl[]) : this.fileDecls;
@@ -440,7 +504,11 @@ class StructureParser {
     // State variable, file-level constant, `using`, or something half-written.
     const { next, terminated } = this.skipStatement(i, end, (k) => this.startsDeclaration(k) || this.newDeclarationLine(i, k));
     this.span(container, i, next, terminated);
-    if (text === "using") return { next };
+    if (text === "using") {
+      const using = this.using(i, next);
+      if (using) (owner ? (owner.usings as UsingDirective[]) : this.usings).push(using);
+      return { next };
+    }
     const typeEnd = this.parseType(i, next);
     if (typeEnd < 0) return { next };
     let j = typeEnd;
