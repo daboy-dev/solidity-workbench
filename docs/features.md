@@ -9,8 +9,9 @@ Suggestions for the code you are writing, also when it is half-written (unclosed
 - **Types and keywords for the context**: `address`, `bool`, `string`, `bytes`, `bytes1`…`bytes32`, `uint8`…`uint256`, `int8`…`int256`, `mapping` (as a snippet); `memory` / `storage` / `calldata` after reference types; `public`, `constant`, `immutable`, `transient`… after the type of a state variable; visibility, mutability, `virtual`, `override`, `returns` and the modifiers in scope in function headers, never repeating or contradicting what is already written; `indexed` in events; statement keywords (`if`, `for`, `emit`, `revert`, `unchecked`…) only inside bodies; units (`ether`, `days`…) after a number.
 - **Values in scope**: parameters, local variables (respecting block scoping), state variables, constants and functions of the contract and of the contracts it inherits from, in any file (private members of bases excluded), and names declared or imported at file level. Events are suggested after `emit`, errors after `revert`.
 - **Named arguments**: inside `Order({ ... })`, left of `:` only the fields still missing are suggested (inserted as `field: `); right of `:`, values of a compatible type come first, and a matching name before everything else (`amount` or `amount_` for the field `amount`). Also for functions, events and errors called with `{...}`.
-- **Expected types**: in `x = |`, `a == |`, `return |`, call arguments and initializers, values of the expected type come first, along with `msg.sender`, `block.timestamp` and similar when they fit.
+- **Expected types**: in `x = |`, `a == |`, `return |`, call arguments and initializers, values of the expected type come first, along with `msg.sender`, `block.timestamp` and similar when they fit. For an overloaded function, the type comes from the overloads the arguments already written can reach.
 - **Members after `.`**: `msg`, `block`, `tx`, `abi`, `type(X)` (according to what X is), address members (`transfer` and `send` only on `address payable`), arrays, `bytes.concat` / `string.concat`; struct fields (`order.amount`, `orders[id].buyer`, `getOrder(id).buyer`); the external functions and public getters of contract-typed values (`token.balanceOf`, `IERC20(addr).transfer`), inherited ones included; `this.`, `super.`, library, enum and user-defined value type members, and unit aliases (`import "x.sol" as X`).
+- **Functions attached with `using ... for`** after a value, shown without the first parameter (the value itself): `token.safeTransfer` with `using SafeERC20 for IERC20;`, `amount.mulDiv` with `using Math for uint256;`, `using {f, L.g} for T` and `global` directives of the file declaring the type. As solc does, only directives of the file and of the enclosing contract (not of its bases) apply, and only functions whose first parameter takes the value are listed; functions bound to an operator (`using {add as +}`) are not members. Calls are typed through them, so `a.mulDiv(b, c).` goes on.
 - **Follows the solc version** chosen for the file (the same as compiler diagnostics, or the `pragma` when no solc is installed): `block.prevrandao` from 0.8.18, `block.blobbasefee` and `blobhash` from 0.8.24, `transient` from 0.8.28, and `transfer` / `send` shown as deprecated from 0.8.31.
 
 ```solidity
@@ -104,9 +105,23 @@ Hovering a name shows what it is, without running solc:
 - **Elementary types**: the range of `uint8`…`int256` (`uint` is `uint256`), the size of `bytesN`, the members of `address` and `address payable`.
 - **Project symbols**: the declaration of local variables, parameters, state variables (with their initializer for constants), functions, modifiers, events, errors, structs with their fields, enums with their values and contracts with their bases, followed by their NatSpec (`@notice`, `@dev`, `@param`, `@return`, `@title`, `@author`, `@custom:…`). A parameter shows its own `@param` line. Members of values (`token.transfer`, `listing.price`), inherited members, `super.` and imported names are resolved like Go to Definition; a member from another contract says where it is declared.
 - **Inherited documentation**: as solc does, a function without NatSpec shows the documentation of the function it overrides, and `@inheritdoc Base` takes Base's documentation and adds the function's own tags.
-- **Overloads**: on a call, the overload taking that many arguments; otherwise every overload. Base functions hidden by an override are not listed.
+- **Functions attached with `using ... for`** after a value (`token.safeTransfer`), resolved like completion does.
+- **Overloads**: on a call, the overload its arguments reach, chosen like solc by number (or names) of arguments and implicit conversions (literals, derived contracts, functions passed as values); every overload that fits when the arguments do not decide (an argument the parser cannot type fits anything), and every overload when the name is not called. Base functions hidden by an override are not listed.
 
-What the tolerant parser cannot resolve (functions attached with `using ... for` after a value, such as `token.safeTransfer`) is taken from the project's solc AST when it is already built for the current text, for example after Find All References or a rename. Hover never starts solc. Unsaved changes are taken into account.
+What the tolerant parser cannot resolve (members of expressions it cannot type) is taken from the project's solc AST when it is already built for the current text, for example after Find All References or a rename. Hover never starts solc. Unsaved changes are taken into account.
+
+## Signature help
+
+While you write a call, the parameters are shown with the one being filled highlighted, the NatSpec of the declaration and the `@param` text of each parameter (inherited documentation included, as in hover). It opens on `(` and `,`, and without running solc covers:
+
+- functions of the file, of inherited contracts and of libraries, members of values (`token.transfer(`, `this.f(`, `super.f(`) and functions attached with `using ... for`, without the value they are called on (`token.safeTransfer(` shows `to` and `value`);
+- events after `emit`, errors after `revert`, and struct constructors, positional (`Order(`) or with named arguments (`Order({amount: |})` highlights `amount`, and while writing a name, the first field not given yet);
+- `new Vault(` (its constructor), `new bytes(` / `new string(` / `new uint256[](` (the length), `Price.wrap(` / `Price.unwrap(`;
+- modifiers and base constructors in headers: `onlyRole(`, `constructor() Ownable(msg.sender)`, `contract Vault is ERC20("Vault", "V")`;
+- variables of function type (`hasher(a, b)` for `function(bytes32, bytes32) view returns (bytes32) hasher`);
+- built-in functions for the file's solc version: `require(`, `keccak256(`, `abi.encode(` (any number of arguments), `abi.decode(`, `string.concat(`, `addr.call(`...
+
+Every overload is listed, and the one selected is the first the arguments written so far can reach, typed as for hover (the argument being written counts once it can be typed). Inside a conversion, parentheses or an index (`transfer(address(|`), the enclosing call is shown. Nothing is shown in comments, strings or parameter declarations.
 
 ## Navigation
 
@@ -114,10 +129,11 @@ What the tolerant parser cannot resolve (functions attached with `using ... for`
   - names declared in the file or imported, following aliases (`import {A as B}`), plain imports (`import "x.sol"`) and re-exports across files;
   - members of the current contract and of the contracts it inherits from, in any file (`onlyOwner`, `_msgSender`, inherited errors and events), with `super.` and `this.`;
   - qualified names: `Math.max` (every overload), `Errors.Unauthorized`, `Types.Side.Long`, `Alias.Symbol` for `import * as Alias`;
-  - library functions attached with `using SafeERC20 for IERC20;` or `using {f} for T;`, e.g. `token.safeTransfer(...)`.
+  - library functions attached with `using SafeERC20 for IERC20;`, `using {f} for T;` or `global` directives, e.g. `token.safeTransfer(...)`, without compiling;
   - local variables and parameters, respecting blocks and shadowing;
   - members of values, typed like completion does: `listing.price`, `token.transfer`, `IERC20(a).approve`, `listings[id].seller`, `Side.Long`;
-  - anything else solc resolves (overloads, functions attached with `using ... for` after a value), from the project's AST when the tolerant analysis finds nothing.
+  - overloads: the one the call's arguments reach, chosen like hover does; when the arguments do not decide, every overload that fits;
+  - anything else solc resolves (members of expressions the tolerant analysis cannot type), from the project's AST when the tolerant analysis finds nothing.
 - **Find All References** (`Shift+F12`, `Alt+Shift+F12`): every use of the symbol in `src`, `test` and `script`, with named arguments (`S({field: ...})`), NatSpec tags and the declarations it overrides or is overridden by (also in libraries, so the references of an OpenZeppelin function list your uses of it). On an import alias (`Y` in `import {X as Y}`), the uses of the alias. Local variables are found instantly with the tolerant parser; anything else uses solc's AST of the project (see [Rename Symbol](#rename-symbol)). If part of the project does not compile, the status bar says that the results may be incomplete.
 - **Document Highlight**: the occurrences of the symbol under the cursor. Locals are exact; other symbols use the last AST of the project when the file has not changed since (solc is never started for this), and otherwise every occurrence of the same name in code.
 - **Import paths are links**: `Ctrl/Cmd+click` on `"@openzeppelin/contracts/access/Ownable.sol"` opens the file, resolved with the project's remappings.
@@ -165,8 +181,10 @@ Solidity Workbench does not register a grammar, and works with or without other 
 ## Known limitations
 
 - Auto-import offers top-level declarations only. Members such as `Library.function` are completed after `Library.` once the library is imported.
-- Language completion does not suggest library functions attached with `using ... for` after a value (`token.safeTransfer`), nor Yul inside `assembly` blocks. Calls are typed by their declared return when it is a single value; with overloads, the first one is used to rank arguments.
-- Hover shows `using ... for` functions after a value only once solc's AST of the project is built (Find All References, Rename) and the file has not changed since. NatSpec is shown as written: references such as `{IERC20-transfer}` are not turned into links. Yul inside `assembly` blocks has no hover.
+- Language completion does not suggest Yul inside `assembly` blocks. Calls are typed by their declared return when it is a single value. Expressions with operators (`a + b`, `x ? a : b`) are not typed: as arguments they fit any overload, and nothing is suggested after `(a ? b : c).`.
+- Overloads are resolved with implicit conversions between elementary types, literals and contract types; the value of a number literal is not checked (`f(300)` fits `uint8`), and function types are not compared parameter by parameter.
+- NatSpec is shown as written: references such as `{IERC20-transfer}` are not turned into links. Yul inside `assembly` blocks has no hover and no signature help.
+- Signature help of `new C(` shows the constructor declared in `C` only (none written: no parameters).
 - The index reflects files on disk: symbols added to another file appear once it is saved.
 - `import "x.sol";` puts every symbol of `x.sol` in scope and those are not suggested again. Symbols that `x.sol` itself imports, which solc also brings into scope, may still be suggested.
 - Without forge, remappings are inferred with forge's main rules; unusual setups may differ. Install forge, or add a `remappings.txt`, for exact results.

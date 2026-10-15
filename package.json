@@ -1,13 +1,13 @@
 {
   "name": "solidity-workbench",
   "displayName": "Solidity Workbench",
-  "description": "Auto-import, completion that understands your code, diagnostics while you type, hover with NatSpec, rename and references across the project, and Go to Definition for Solidity and Foundry projects.",
+  "description": "Auto-import, completion that understands your code, diagnostics while you type, hover and signature help with NatSpec, rename and references across the project, and Go to Definition for Solidity and Foundry projects.",
   "icon": "images/icon.png",
   "galleryBanner": {
     "color": "#1B1E4B",
     "theme": "dark"
   },
-  "version": "0.5.0",
+  "version": "0.6.0",
   "publisher": "daboy-dev",
   "license": "MIT",
   "repository": {
@@ -34,6 +34,7 @@
     "completion",
     "intellisense",
     "hover",
+    "signature help",
     "diagnostics",
     "rename",
     "solc"

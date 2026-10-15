@@ -12,7 +12,7 @@ The usual Solidity extensions highlight the syntax, but miss the basics you take
   contract Vault is Ownab|   // → Ownable, and import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
   ```
 
-- **Completion that understands the code**, even half-written: variables and members in scope (inherited ones too), types and keywords that fit where you are, members after `.` (`msg.sender`, `order.amount`, `token.balanceOf`), and the missing fields when you create a struct, with matching values first:
+- **Completion that understands the code**, even half-written: variables and members in scope (inherited ones too), types and keywords that fit where you are, members after `.` (`msg.sender`, `order.amount`, `token.balanceOf`, and `token.safeTransfer` from `using SafeERC20 for IERC20`), and the missing fields when you create a struct, with matching values first:
 
   ```solidity
   struct Order {
@@ -37,9 +37,15 @@ The usual Solidity extensions highlight the syntax, but miss the basics you take
   function |deposit(uint256 amount) external override { … }   // F2 → stake: IVault, Vault, every call and test
   ```
 
-- **Go to Definition that follows Solidity**: through imports and aliases, inheritance across files, `super.`, `Library.member`, `using … for` libraries, local variables and members of values (`token.transfer`, `listing.price`).
+- **Go to Definition that follows Solidity**: through imports and aliases, inheritance across files, `super.`, `Library.member`, `using … for` libraries, local variables, members of values (`token.transfer`, `listing.price`) and straight to the overload a call reaches.
 
-- **Hover with signatures and NatSpec**: functions, events, errors, structs and variables of your project and its libraries show their declaration and documentation (inherited through `@inheritdoc` too), and builtins such as `msg.sender` or `abi.encode` show their type and docs for your solc version.
+- **Hover with signatures and NatSpec**: functions, events, errors, structs and variables of your project and its libraries show their declaration and documentation (inherited through `@inheritdoc` too), and builtins such as `msg.sender` or `abi.encode` show their type and docs for your solc version. Overloads are told apart by the types of the arguments, as solc does.
+
+- **Signature help while you write a call**: the parameter being filled and its `@param` text, for functions, `using … for` functions (without the value they are called on), events, errors, structs, constructors, modifiers and builtins, with the right overload selected:
+
+  ```solidity
+  token.safeTransfer(to, |)   // safeTransfer(address to, uint256 value): value
+  ```
 
 Also included: document outline, Document Highlight, Go to Symbol in Workspace and clickable import paths. See [all features in detail](docs/features.md).
 
@@ -74,7 +80,7 @@ Parsing runs in background threads and solc in its own process, so the editor is
 | Completion | ~1 ms (auto-import: up to 40 ms on the first letters) |
 | solc check of a contract importing ERC4626, AccessControl and Governor | ~40 ms |
 | Go to Definition through OpenZeppelin's inheritance | under 1 ms (under 100 ms the first time) |
-| Hover through OpenZeppelin's inheritance | ~1 ms |
+| Hover and signature help through OpenZeppelin's inheritance | ~1 ms |
 | Rename a function used 181 times in 61 files (901 times in 301 files) | ~0.2 s (~0.3 s), including the check that the result compiles |
 | Symbol index, first time / from cache | ~14 s / ~0.4 s, in the background |
 
@@ -108,9 +114,9 @@ Each feature can be turned off with its own `enabled` setting; `index.*` and `fo
 
 ## Known limitations
 
-- Other Solidity extensions may show similar suggestions, hovers or diagnostics next to ours: turn the feature off in one of them.
+- Other Solidity extensions may show similar suggestions, hovers, signature help or diagnostics next to ours: turn the feature off in one of them.
 - Compiler diagnostics need a solc installed by forge, or `solidityWorkbench.compiler.solcPath`.
-- Library functions attached with `using … for` are not suggested after a value (`token.safeTransfer`); Go to Definition does find them, and hover once the project has been compiled for references or rename.
+- Expressions with operators (`a + b`, `x ? a : b`) are not typed: nothing is suggested after `(a ? b : c).`, and as arguments they fit any overload.
 - Rename and Find All References (except for local variables) need the project to compile with an installed solc; symbols declared in `lib/` are never renamed.
 - Projects without `foundry.toml` are indexed with Foundry's default layout.
 

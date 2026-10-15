@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.0 — 2026-10-15
+
+- Signature help, on by default (`solidityWorkbench.signatureHelp.enabled`), without running solc: the parameter being filled with the NatSpec of the declaration and of each parameter, for functions and members, functions attached with `using ... for` (without the value they are called on), events after `emit`, errors after `revert`, struct constructors (positional or named arguments), `new C(...)` and allocations (`new bytes(n)`, `new uint256[](n)`), `T.wrap` / `T.unwrap`, modifiers and base constructors in headers, variables of function type and built-in functions. Every overload is listed, with the one the arguments reach selected.
+- Functions attached with `using ... for` are resolved without compiling: suggested after a value (without their first parameter), typed in chained calls, and shown by hover and Go to Definition. Directives of the file, of the enclosing contract and `global` ones of the type's file apply, as in solc.
+- Overloads are told apart by the types of the arguments, as solc does (number or names of arguments, implicit conversions, literals, derived contracts): hover shows the overload a call reaches, Go to Definition goes straight to it, calls take its return type, and the ranking of arguments follows the overloads still reachable. When the arguments do not decide, every overload that fits is shown.
+- Calls of `abi.*` functions, of variables of function type and of `T.wrap` / `T.unwrap` are typed, so completion goes on after them.
+
 ## 0.5.0 — 2026-10-14
 
 - Hover, on by default (`solidityWorkbench.hover.enabled`), without running solc:

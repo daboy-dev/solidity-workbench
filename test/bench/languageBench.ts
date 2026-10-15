@@ -10,6 +10,7 @@ import { parseStructure } from "../../src/core/completion/structure";
 import { structureFile, type StructureFile, type StructureHost } from "../../src/core/completion/symbols";
 import { listInstalledSolc, svmDirs } from "../../src/core/compiler/solcVersions";
 import { hoverAt } from "../../src/core/hover/hover";
+import { signatureHelpAt } from "../../src/core/signature/signature";
 import { findDefinitions, sourceFile, type SourceFile, type SourceHost } from "../../src/core/navigation/definitions";
 import { loadProject } from "../../src/core/project/projectModel";
 import { analyzeDocument } from "../../src/core/solidity/analyzeDocument";
@@ -272,6 +273,57 @@ async function main(): Promise<void> {
       }
     }
     console.log(`hover robustness: ${hovers} hovers on ${libFiles.length} files cut at 8 points, ${failures} exceptions; max lag ${lagSince()}`);
+  }
+
+  // Signature help: probes on the entry, every `(` and `,` of large files, and half-written code.
+  await settle();
+  {
+    const env = { version: "0.8.30", path: ENTRY, host: structureHost };
+    const probes = ["safeTransfer(", "Math.min(", "_grantRole(", "onlyRole(", 'ERC20("Vault", ', "ERC4626(", "keccak256("];
+    for (const needle of probes) {
+      const offset = ENTRY_TEXT.indexOf(needle) + needle.length;
+      const entry = parseStructure(ENTRY_TEXT);
+      const [h, tCold] = await time(() => signatureHelpAt(entry, offset, env));
+      const warm: number[] = [];
+      for (let i = 0; i < 5; i++) warm.push((await time(() => signatureHelpAt(parseStructure(ENTRY_TEXT), offset, env)))[1]);
+      const s = h?.signatures[h.activeSignature];
+      const what = s ? `${s.label.slice(0, 50)} (${h!.signatures.length} sig., param ${s.activeParameter})` : "(none)";
+      console.log(`signature ${needle.padEnd(18)} → ${what.padEnd(70)} first ${tCold.toFixed(1)} ms, then ${stats(warm)}`);
+    }
+    console.log(`  max lag ${lagSince()}`);
+    for (const rel of ["lib/openzeppelin-contracts/contracts/governance/Governor.sol", "lib/openzeppelin-contracts/contracts/token/ERC20/extensions/ERC4626.sol"]) {
+      const file = path.join(root, rel);
+      const text = await fs.readFile(file, "utf8").catch(() => undefined);
+      if (text === undefined) continue;
+      const structure = parseStructure(text);
+      const runs: number[] = [];
+      let shown = 0;
+      for (const t of structure.tokens) {
+        if (t.text !== "(" && t.text !== ",") continue;
+        const [h, ms] = await time(() => signatureHelpAt(structure, t.end, { version: "0.8.30", path: file, host: structureHost }));
+        runs.push(ms);
+        if (h) shown++;
+      }
+      console.log(`signature after every ( and , of ${path.basename(rel)}: ${shown}/${runs.length} with help, ${stats(runs)}; max lag ${lagSince()}`);
+    }
+    let requests = 0;
+    let failures = 0;
+    const libFiles = (await listSol(path.join(root, "lib/openzeppelin-contracts/contracts"))).slice(0, 120);
+    for (const file of libFiles) {
+      const text = await fs.readFile(file, "utf8");
+      for (let cut = 1; cut <= 8; cut++) {
+        const part = text.slice(0, Math.floor((text.length * cut) / 9));
+        for (const tail of ["", "(", "(x, "]) {
+          requests++;
+          try {
+            await signatureHelpAt(parseStructure(part + tail), part.length + tail.length, { version: "0.8.30", path: file, host: structureHost });
+          } catch (err) {
+            if (failures++ < 5) console.log(`  signature help threw in ${path.basename(file)} at ${part.length}: ${String(err)}`);
+          }
+        }
+      }
+    }
+    console.log(`signature help robustness: ${requests} requests on ${libFiles.length} files cut at 8 points, ${failures} exceptions; max lag ${lagSince()}`);
   }
 
   // ---- rename / references with solc's AST -------------------------------------------

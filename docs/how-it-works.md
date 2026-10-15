@@ -23,6 +23,10 @@ For each file, the remapping with the longest matching target is used and checke
 
 The index covers `src/`, `test/`, `script/`, the library folders and any remapping target in the project (e.g. `node_modules/@openzeppelin/...`). Files are parsed with `@solidity-parser/parser` in tolerant mode, with a regex fallback for files it cannot handle. Parsing happens in a pool of worker threads, so the editor stays responsive. Results are cached on disk by modification time, and kept up to date with file system watchers, including `forge install` and changes to `foundry.toml` or `remappings.txt`.
 
+## Types, overloads and `using ... for`
+
+Completion, hover, signature help and Go to Definition type expressions with the tolerant parser, without solc: names, members, calls, indexes, conversions and literals. A call takes the return type of the overload its arguments reach, chosen as solc does: by number (or names) of arguments, then by implicit conversion of each argument that can be typed (integers to wider ones, literals, `address payable` to `address`, contracts to their bases). `using ... for` directives are read from the file, the enclosing contract and, for `global` ones, the file declaring the type; a function is attached when its first parameter takes the value. Measured against solc's AST on OpenZeppelin Contracts 5.7 (248 files), all 542 calls to overloaded functions resolve to the overload solc picked, and signature help shows the right function on 2,726 of 2,727 calls.
+
 ## Rename and references
 
 Local variables and parameters are resolved with the tolerant parser used by completion: each use is bound to the innermost declaration visible at that point. A rename is applied to the text, parsed again and accepted only if exactly the renamed occurrences refer to the new name.
@@ -45,6 +49,7 @@ Measured on a synthetic project with 5,651 files (13 copies of OpenZeppelin Cont
 | solc check of a contract importing ERC4626, AccessControl and Governor | ~40 ms (median) |
 | Go to Definition through OpenZeppelin's inheritance | under 1 ms once the files are parsed, under 100 ms the first time |
 | Hover (signature + NatSpec through OpenZeppelin's inheritance, builtins)¹ | ~1 ms or less, first request included once the files are parsed |
+| Signature help (OpenZeppelin functions, `using ... for`, constructors, builtins)¹ | ~1 ms or less, first request included once the files are parsed |
 | Rename of a local variable (worst case, a 13,000-line file) | under 25 ms, check included |
 | Project AST for rename/references: 63 own files using OpenZeppelin² | ~190 ms (solc ~155 ms, JSON + index ~35 ms in the worker) |
 | Rename a function used 181 times in 61 files² | ~190 ms, including the compilation that checks the result |
@@ -53,6 +58,6 @@ Measured on a synthetic project with 5,651 files (13 copies of OpenZeppelin Cont
 ¹ Measured on a Foundry project with OpenZeppelin Contracts 5; it depends on the files the contract reaches, not on the size of the project.
 ² Generated test files, each importing the renamed contract and an ERC4626 + AccessControl vault; a rename runs `prepare` on the cached AST, then plans and checks the edits.
 
-The extension host is never blocked for more than a few milliseconds: parsing runs in worker threads and solc in its own process, and a check in progress is cancelled when you keep typing. Language completion and hover use their own tolerant parser, linear and fast enough to run in place (2 ms for an 800-line file), and cache what they parse by document version and modification time. Hover was also run on 120 OpenZeppelin files cut short at 8 points each (18,650 hovers) without a single exception.
+The extension host is never blocked for more than a few milliseconds: parsing runs in worker threads and solc in its own process, and a check in progress is cancelled when you keep typing. Language completion and hover use their own tolerant parser, linear and fast enough to run in place (2 ms for an 800-line file), and cache what they parse by document version and modification time. Hover was also run on 120 OpenZeppelin files cut short at 8 points each (18,650 hovers), and signature help after every `(` and `,` of OpenZeppelin and on its files cut short (26,569 requests, at most 5 ms each), without a single exception.
 
 The language benchmark (`test/bench/languageBench.ts`, see [CONTRIBUTING.md](../CONTRIBUTING.md)) reproduces these measurements on any Foundry project.

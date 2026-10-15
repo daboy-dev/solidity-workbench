@@ -18,6 +18,6 @@ Benchmarks on a large project (both use the real forge; the second also the inst
 
 Layout:
 
-- `src/core/`: pure logic, with no `vscode` imports: the project model and remappings, forge and solc integration, the symbol index and its cache, document analysis (syntax, outline), navigation, rename and references (locals with the tolerant parser, the rest from solc's AST in a worker thread), language completion (tolerant structure parser, cursor context, scope and types, version-aware catalog of globals), import edits and candidate ranking.
+- `src/core/`: pure logic, with no `vscode` imports: the project model and remappings, forge and solc integration, the symbol index and its cache, document analysis (syntax, outline), navigation, rename and references (locals with the tolerant parser, the rest from solc's AST in a worker thread), language completion (tolerant structure parser, cursor context, scope and types, `using ... for`, overload resolution, version-aware catalog of globals), hover, signature help, import edits and candidate ranking.
 - `src/host/`: the VS Code adapters of the core: settings, logging, project discovery, watchers.
-- `src/features/<feature>/`: one folder per feature, each registering itself through the `FeatureRegistry`: `completion`, `autoImport`, `syntaxDiagnostics`, `compilerDiagnostics`, `outline`, `navigation`, `formatting`.
+- `src/features/<feature>/`: one folder per feature, each registering itself through the `FeatureRegistry`: `completion`, `autoImport`, `syntaxDiagnostics`, `compilerDiagnostics`, `outline`, `hover`, `signatureHelp`, `navigation`, `rename`, `formatting`.
