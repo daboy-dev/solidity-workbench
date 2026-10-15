@@ -219,9 +219,21 @@ export function checkKeywordTypos(clean: string): SyntaxProblem[] {
   const problems: SyntaxProblem[] = [];
   const scopes: Scope[] = [{ kind: "top" }];
   let statementStart = true;
+  // Open parentheses: true when they hold the condition of `if`, `while` or `for`, after which a statement starts.
+  const parens: boolean[] = [];
 
   for (let i = 0; i < clean.length; i++) {
     const c = clean[i]!;
+    if (c === "(") {
+      parens.push(/\b(if|while|for)\s*$/.test(clean.slice(Math.max(0, i - 12), i)));
+      statementStart = false;
+      continue;
+    }
+    if (c === ")") {
+      // `if (!ok) revertr Failed();`
+      if (parens.pop()) statementStart = true;
+      continue;
+    }
     if (c === "{") {
       const header = clean.slice(blockHeaderStart(clean, i), i);
       scopes.push({ kind: /^\s*(abstract\s+contract|contract|interface|library)\b/.test(header) ? "contract" : "other" });
@@ -247,6 +259,11 @@ export function checkKeywordTypos(clean: string): SyntaxProblem[] {
     if (!word) continue;
     const end = i + word.length;
     i = end - 1;
+    // `else revertr Failed();`, `do emti E(); while (...)`.
+    if (word === "else" || word === "do") {
+      statementStart = true;
+      continue;
+    }
     if (RESERVED.has(word) || /^u?int\d+$|^bytes\d+$/.test(word)) continue;
 
     const shape = shapeAfter(clean, end);

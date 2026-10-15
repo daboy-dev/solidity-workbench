@@ -59,7 +59,7 @@ suite("Language basics", () => {
   test("reports a misspelled revert in a function body, not the parser's error", async () => {
     const editor = await open(
       "src/TypoRevert.sol",
-      "pragma solidity ^0.8.20;\n\ncontract TypoRevert {\n    error OnlySeller();\n    function f() external pure {\n        revertr OnlySeller();\n    }\n}\n",
+      "pragma solidity ^0.8.20;\n\ncontract TypoRevert {\n    error OnlySeller();\n    function f(bool ok) external pure {\n        if (!ok) revertr OnlySeller();\n    }\n}\n",
     );
     const diags = await waitFor(() => (ours(editor.document.uri).length ? ours(editor.document.uri) : undefined));
     assert.deepStrictEqual(

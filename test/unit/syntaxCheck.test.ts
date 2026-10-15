@@ -34,8 +34,16 @@ describe("keyword typos", () => {
     expect(problems(body("revertr OnlySeller();"))).toEqual([["keyword-typo", "revertr", "Unknown keyword `revertr`. Did you mean `revert`?"]]);
     expect(problems(body("if (true) { reverr OnlySeller(); }"))[0]?.[2]).toContain("`revert`");
     expect(problems(body("emti Paid(1);"))).toEqual([["keyword-typo", "emti", "Unknown keyword `emti`. Did you mean `emit`?"]]);
+    // After the condition of an `if` without braces, `else`, loops.
+    expect(problems(body("(bool success, ) = msg.sender.call(\"\");\n    if (!success) revertr OnlySeller();"))).toEqual([
+      ["keyword-typo", "revertr", "Unknown keyword `revertr`. Did you mean `revert`?"],
+    ]);
+    expect(problems(body("if (f(g(1)) > 0) revert OnlySeller(); else revrt OnlySeller();"))[0]?.[1]).toBe("revrt");
+    expect(problems(body("for (uint256 i; i < 2; i++) emitt Paid(i);"))[0]?.[1]).toBe("emitt");
+    expect(problems(body("while (true) reverts OnlySeller();"))[0]?.[1]).toBe("reverts");
     // Valid statements: calls, declarations, the keywords themselves.
     expect(problems(body("revert OnlySeller(); emit Paid(1); Paid memory p; reverted(); uint256 x = 1;"))).toEqual([]);
+    expect(problems(body("if (x) revert OnlySeller(); else if (y) emit Paid(1); else z = before(1);"))).toEqual([]);
   });
 
   it("does not flag user-defined types used as variables", () => {
