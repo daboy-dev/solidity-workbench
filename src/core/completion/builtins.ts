@@ -164,6 +164,20 @@ export const EXTERNAL_FUNCTION: readonly Builtin[] = [
   prop("address", "address", "The address of the contract of the function."),
 ];
 
+/** Members of an error or event used as an expression (`Errors.Unauthorized.selector`). */
+export const ERROR_MEMBERS: readonly Builtin[] = [
+  prop("selector", "bytes4", "The error's selector: the first four bytes of the keccak256 hash of its signature, as in its revert data.", { since: "0.8.4" }),
+];
+
+export const EVENT_MEMBERS: readonly Builtin[] = [
+  prop("selector", "bytes32", "The event's selector: the keccak256 hash of its signature, the first topic of non-anonymous events.", { since: "0.8.15" }),
+];
+
+/** Built-in members of an error or event declaration, if `kind` is one. */
+export function declarationMembers(kind: string): readonly Builtin[] {
+  return kind === "error" ? ERROR_MEMBERS : kind === "event" ? EVENT_MEMBERS : [];
+}
+
 export const UNITS: readonly Builtin[] = [
   prop("wei", "", "1"),
   prop("gwei", "", "1e9 wei"),

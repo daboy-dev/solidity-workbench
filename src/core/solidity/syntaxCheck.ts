@@ -189,6 +189,8 @@ function findLastIndex<T>(list: readonly T[], predicate: (item: T) => boolean): 
 
 const TOP_LEVEL_KEYWORDS = ["contract", "interface", "library", "struct", "enum", "function", "event", "error", "abstract"];
 const MEMBER_KEYWORDS = ["function", "modifier", "constructor", "fallback", "receive", "event", "error", "struct", "enum"];
+/** Statements of the shape `keyword Name(...)`. */
+const STATEMENT_KEYWORDS = ["revert", "emit"];
 
 /** Words that may legitimately start a declaration. Never reported as typos. */
 const RESERVED = new Set([
@@ -209,8 +211,9 @@ interface Scope {
  * Finds misspelled declaration keywords (`contact Vault {`, `fucntion f(`,
  * `constuctor(`). Only shapes that can never be valid Solidity are checked:
  * at file level `word Name {` or `word Name (`; inside a contract
- * `word Name (`, `word Name {` or `word (`. A user-defined type followed by a
- * name and `;` or `=` (a variable) is never reported.
+ * `word Name (`, `word Name {` or `word (`; in a body `word Name (`
+ * (`revertr Unauthorized();`, `emti Transfer(...)`). A user-defined type
+ * followed by a name and `;` or `=` (a variable) is never reported.
  */
 export function checkKeywordTypos(clean: string): SyntaxProblem[] {
   const problems: SyntaxProblem[] = [];
@@ -239,7 +242,6 @@ export function checkKeywordTypos(clean: string): SyntaxProblem[] {
     statementStart = false;
 
     const scope = scopes.at(-1)!.kind;
-    if (scope === "other") continue;
     IDENT.lastIndex = i;
     const word = IDENT.exec(clean)?.[0];
     if (!word) continue;
@@ -249,7 +251,11 @@ export function checkKeywordTypos(clean: string): SyntaxProblem[] {
 
     const shape = shapeAfter(clean, end);
     const candidates =
-      scope === "top"
+      scope === "other"
+        ? shape === "name("
+          ? STATEMENT_KEYWORDS
+          : []
+        : scope === "top"
         ? shape === "name{" || shape === "name("
           ? TOP_LEVEL_KEYWORDS
           : shape === "contract"

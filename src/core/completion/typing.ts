@@ -1,4 +1,4 @@
-import { GLOBAL_FUNCTIONS } from "./builtins";
+import { declarationMembers, GLOBAL_FUNCTIONS } from "./builtins";
 import type { Expr } from "./cursorContext";
 import type { Decl } from "./structure";
 import { isContractKind, type Sym, type SymbolResolver, type TypeScope } from "./symbols";
@@ -119,6 +119,9 @@ export class Typer {
         const owner = object.sym;
         if (!owner) return builtinTypeOf({ kind: "member", object: { kind: "name", name: object.type }, name });
         if (owner.decl.kind === "enum") return owner.decl.members?.some((m) => m.name === name) ? value(owner.name, this.resolver.declScope(owner)) : undefined;
+        // `Err.selector`, `Transfer.selector`.
+        const builtin = declarationMembers(owner.decl.kind).find((b) => b.name === name);
+        if (builtin) return value(builtin.type);
         const member = await this.resolver.memberNamed(owner, name);
         return member ? this.symType(member) : undefined;
       }

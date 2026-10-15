@@ -72,6 +72,18 @@ suite("Language completion", () => {
     await vscode.commands.executeCommand("workbench.action.closeAllEditors");
   });
 
+  test("suggests selector after an error of another contract", async () => {
+    await open("src/SelectorMarket.sol", "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.20;\n\ncontract SelectorMarket {\n    error SelectorMarket__PriceZero();\n}\n");
+    const { editor, position } = await openAtMarker(
+      "test/SelectorMarket.t.sol",
+      `// SPDX-License-Identifier: MIT\npragma solidity ^0.8.20;\n\nimport {SelectorMarket} from "../src/SelectorMarket.sol";\n\ncontract SelectorMarketTest {\n    function test() external {\n        bytes4 s = SelectorMarket.SelectorMarket__PriceZero.|;\n    }\n}\n`,
+    );
+    const items = await completions(editor.document, position, ".");
+    const selector = items.find((i) => labelOf(i) === "selector");
+    assert.ok(selector, `got: ${items.map(labelOf).join(", ")}`);
+    assert.strictEqual(selector.detail, "bytes4");
+  });
+
   test("suggests msg members after `msg.`", async () => {
     const { editor, position } = await openAtMarker("src/Globals.sol", body("^0.8.20", "address s = msg.|"));
     assert.ok(api.isFeatureActive("completion"));

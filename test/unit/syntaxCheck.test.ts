@@ -29,6 +29,15 @@ describe("keyword typos", () => {
     expect(problems("contract V {\n  recieve() external payable {}\n}\n")[0]?.[2]).toContain("`receive`");
   });
 
+  it("reports misspelled revert and emit in bodies, instead of the parser's error", () => {
+    const body = (stmt: string) => `contract V {\n  error OnlySeller();\n  event Paid(uint256 a);\n  function f() external {\n    ${stmt}\n  }\n}\n`;
+    expect(problems(body("revertr OnlySeller();"))).toEqual([["keyword-typo", "revertr", "Unknown keyword `revertr`. Did you mean `revert`?"]]);
+    expect(problems(body("if (true) { reverr OnlySeller(); }"))[0]?.[2]).toContain("`revert`");
+    expect(problems(body("emti Paid(1);"))).toEqual([["keyword-typo", "emti", "Unknown keyword `emti`. Did you mean `emit`?"]]);
+    // Valid statements: calls, declarations, the keywords themselves.
+    expect(problems(body("revert OnlySeller(); emit Paid(1); Paid memory p; reverted(); uint256 x = 1;"))).toEqual([]);
+  });
+
   it("does not flag user-defined types used as variables", () => {
     expect(problems("contract V {\n  Contact contact;\n  Contact public c = Contact(address(0));\n}\n")).toEqual([]);
     expect(problems("Contact constant C = Contact.wrap(1);\n")).toEqual([]);

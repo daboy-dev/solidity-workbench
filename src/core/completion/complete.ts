@@ -2,6 +2,7 @@ import {
   ABI,
   BLOCK,
   CONTRACT_TYPE_INFO,
+  declarationMembers,
   ENUM_TYPE_INFO,
   GLOBAL_FUNCTIONS,
   GLOBAL_VALUES,
@@ -458,6 +459,7 @@ class Session {
           for (const v of sym.decl.members ?? []) out.add({ label: v.name, kind: "enumMember", detail: sym.name, rank: RANK.member });
           return;
         }
+        if (sym.decl.kind === "error" || sym.decl.kind === "event") return out.builtins(declarationMembers(sym.decl.kind), RANK.member, true);
         if (sym.decl.kind === "type") {
           const underlying = sym.decl.type ?? "";
           out.add({ label: "wrap", kind: "method", detail: `wrap(${underlying}) returns (${sym.name})`, rank: RANK.member });

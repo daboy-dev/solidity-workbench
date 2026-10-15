@@ -310,3 +310,17 @@ describe("NatSpec comments", () => {
     expect(await docOf(source("/// @custom:security non-reentrant"))).toBe("*@custom:security* non-reentrant");
   });
 });
+
+describe("hover on selectors", () => {
+  it("shows the selector of errors and events", async () => {
+    const source = `pragma solidity ^0.8.20;
+contract M {
+    error PriceZero();
+    event Listed(uint256 id);
+    function f() external pure returns (bytes32) { return M.PriceZero.sel|ector ^ Listed.selector; }
+}
+`;
+    expect(await hover(source)).toBe("bytes4 PriceZero.selector");
+    expect(await hover(source.replace("sel|ector", "selector").replace("Listed.selector", "Listed.sel|ector"))).toBe("bytes32 Listed.selector");
+  });
+});

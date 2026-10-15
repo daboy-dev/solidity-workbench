@@ -6,6 +6,8 @@
 - Functions attached with `using ... for` are resolved without compiling: suggested after a value (without their first parameter), typed in chained calls, and shown by hover and Go to Definition. Directives of the file, of the enclosing contract and `global` ones of the type's file apply, as in solc.
 - Overloads are told apart by the types of the arguments, as solc does (number or names of arguments, implicit conversions, literals, derived contracts): hover shows the overload a call reaches, Go to Definition goes straight to it, calls take its return type, and the ranking of arguments follows the overloads still reachable. When the arguments do not decide, every overload that fits is shown.
 - Calls of `abi.*` functions, of variables of function type and of `T.wrap` / `T.unwrap` are typed, so completion goes on after them.
+- `selector` is suggested, typed and hovered after errors and events, qualified or not (`vm.expectRevert(Market.PriceZero.selector)`).
+- Misspelled `revert` and `emit` in function bodies (`revertr Unauthorized();`) are reported on the word, with a quick fix, instead of a parser error on the `(`.
 
 ## 0.5.0 — 2026-10-14
 

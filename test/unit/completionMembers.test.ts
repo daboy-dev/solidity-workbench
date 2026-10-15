@@ -113,3 +113,43 @@ describe("members by declared type", () => {
     expect(list.find((e) => e.label === "fee")?.kind).toBe("method");
   });
 });
+
+describe("selectors of errors and events", () => {
+  const files = (body: string, version = "0.8.30") => ({
+    files: {
+      "/p/Market.sol": `pragma solidity ^0.8.20;
+contract NFTMarketplace {
+    error NFTMarketplace__PriceZero();
+    event Listed(uint256 id);
+}
+`,
+      "/p/Market.t.sol": `pragma solidity ^0.8.20;
+import {NFTMarketplace} from "./Market.sol";
+error Unauthorized(address who);
+contract MarketTest {
+    function test() external {
+        ${body}
+    }
+}
+`,
+    },
+    version,
+  });
+  const labels = async (body: string, version?: string) => {
+    const { files: f, version: v } = files(body, version);
+    return (await entriesIn(f, "/p/Market.t.sol", { version: v })).map((e) => `${e.label}: ${e.detail}`);
+  };
+
+  it("suggests selector after an error or event, qualified or not", async () => {
+    expect(await labels("vm.expectRevert(NFTMarketplace.NFTMarketplace__PriceZero.|);")).toEqual(["selector: bytes4"]);
+    expect(await labels("bytes4 s = Unauthorized.|;")).toEqual(["selector: bytes4"]);
+    expect(await labels("bytes32 t = NFTMarketplace.Listed.|;")).toEqual(["selector: bytes32"]);
+    // Event selectors exist since 0.8.15.
+    expect(await labels("NFTMarketplace.Listed.|;", "0.8.13")).toEqual([]);
+  });
+
+  it("types it as fixed bytes", async () => {
+    expect(await labels("NFTMarketplace.Listed.selector.|;")).toEqual(["length: uint8"]);
+    expect(await labels("Unauthorized.selector.|;")).toEqual(["length: uint8"]);
+  });
+});

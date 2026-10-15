@@ -1,4 +1,4 @@
-import { ABI, BLOCK, CONTRACT_TYPE_INFO, ENUM_TYPE_INFO, EXTERNAL_FUNCTION, GLOBAL_FUNCTIONS, GLOBAL_VALUES, INTERFACE_TYPE_INFO, MSG, TX, UNITS, type Builtin } from "../completion/builtins";
+import { ABI, BLOCK, CONTRACT_TYPE_INFO, declarationMembers, ENUM_TYPE_INFO, EXTERNAL_FUNCTION, GLOBAL_FUNCTIONS, GLOBAL_VALUES, INTERFACE_TYPE_INFO, MSG, TX, UNITS, type Builtin } from "../completion/builtins";
 import { overloadsCalledAt } from "../completion/calls";
 import { cursorContext, type CursorContext } from "../completion/cursorContext";
 import { declarationsNamed, fromSym, memberDecls, type MemberDecl } from "../completion/members";
@@ -237,7 +237,8 @@ export async function builtinMemberOf(typer: Typer, object: ExprType | undefined
       if (await typer.typeSym(object)) return undefined;
       return pick(valueMembers(object.type), object.type);
     case "static":
-      return object.sym ? undefined : pick(staticMembers(object.type), object.type);
+      if (object.sym) return pick(declarationMembers(object.sym.decl.kind), object.sym.name);
+      return pick(staticMembers(object.type), object.type);
     case "function":
       return pick(object.external ? EXTERNAL_FUNCTION : EXTERNAL_FUNCTION.filter((b) => b.name === "selector"), "function");
     case "typeInfo": {
