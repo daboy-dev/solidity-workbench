@@ -94,6 +94,7 @@ More measurements and how each part works: [How it works](docs/how-it-works.md).
 | `solidityWorkbench.compiler.solcPath` | `""` | solc binary path or installed version to use instead of the automatic choice. |
 | `solidityWorkbench.outline.enabled` | `true` | Provide the document outline. |
 | `solidityWorkbench.hover.enabled` | `true` | Show signatures and NatSpec of project symbols, and the type and docs of builtins (`msg.sender`, `abi.encode`...), on hover. |
+| `solidityWorkbench.signatureHelp.enabled` | `true` | Show the parameters and NatSpec of the call being written, with the overload its arguments reach. |
 | `solidityWorkbench.navigation.enabled` | `true` | Go to Definition, Find All References, Document Highlight, clickable import paths and Go to Symbol in Workspace. |
 | `solidityWorkbench.rename.enabled` | `true` | Rename Symbol (`F2`) across the project's own files. |
 | `solidityWorkbench.formatting.enabled` | `false` | Format with `forge fmt`. |

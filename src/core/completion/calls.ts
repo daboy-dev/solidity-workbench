@@ -64,12 +64,30 @@ export async function overloadsCalledAt<T extends MemberDecl>(typer: Typer, stru
  * written `before` it: what the argument being typed is expected to be.
  */
 export async function paramsAt(typer: Typer, candidates: readonly MemberDecl[], before: readonly (Expr | undefined)[], index: number): Promise<Param[]> {
-  const open = candidates.filter((c) => callParams(c).length > index);
-  if (open.length < 2) return open.map((c) => callParams(c)[index]!);
+  return (await reachable(typer, candidates, before, index + 1)).map((c) => callParams(c)[index]!);
+}
+
+/**
+ * Overloads a call being written can still reach: taking at least `minArity` arguments
+ * and the types of those written `before` the cursor (by position, or by name with
+ * `names`). When the types rule them all out, those taking enough arguments.
+ */
+export async function reachable<T extends MemberDecl>(
+  typer: Typer,
+  candidates: readonly T[],
+  before: readonly (Expr | undefined)[],
+  minArity: number,
+  names?: readonly string[],
+): Promise<T[]> {
+  const open = candidates.filter((c) => {
+    const params = callParams(c);
+    return params.length >= minArity && (!names || names.every((n) => params.some((p) => p.name === n)));
+  });
+  if (open.length < 2) return open;
   const receivers = await Promise.all(before.map((v) => (v ? receiverOf(typer, v) : undefined)));
-  const fits: MemberDecl[] = [];
-  for (const c of open) if (await takes(typer.resolver, callParams(c), receivers, undefined, typer.resolver.declScope(toSym(c)))) fits.push(c);
-  return (fits.length ? fits : open).map((c) => callParams(c)[index]!);
+  const fits: T[] = [];
+  for (const c of open) if (await takes(typer.resolver, callParams(c), receivers, names, typer.resolver.declScope(toSym(c)))) fits.push(c);
+  return fits.length ? fits : open;
 }
 
 async function takes(

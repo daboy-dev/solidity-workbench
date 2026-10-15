@@ -195,8 +195,19 @@
         }
       },
       {
-        "title": "Navigation",
+        "title": "Signature Help",
         "order": 9,
+        "properties": {
+          "solidityWorkbench.signatureHelp.enabled": {
+            "type": "boolean",
+            "default": true,
+            "markdownDescription": "Show the parameters of the call being written, with the NatSpec of the declaration and of each parameter: project functions and members (functions attached with `using ... for` included), events after `emit`, errors after `revert`, struct constructors (`S(...)`, `S({...})`), `new C(...)`, modifiers and base constructors, and built-in functions (`require`, `abi.encode`, `keccak256`...). The overload the arguments can reach is selected. Never runs solc. May duplicate signature help from other Solidity extensions."
+          }
+        }
+      },
+      {
+        "title": "Navigation",
+        "order": 10,
         "properties": {
           "solidityWorkbench.navigation.enabled": {
             "type": "boolean",
@@ -207,7 +218,7 @@
       },
       {
         "title": "Rename",
-        "order": 10,
+        "order": 11,
         "properties": {
           "solidityWorkbench.rename.enabled": {
             "type": "boolean",
@@ -218,7 +229,7 @@
       },
       {
         "title": "Formatting",
-        "order": 11,
+        "order": 12,
         "properties": {
           "solidityWorkbench.formatting.enabled": {
             "type": "boolean",

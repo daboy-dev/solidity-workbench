@@ -6,6 +6,7 @@ import { compilerDiagnosticsFeature } from "./features/compilerDiagnostics";
 import { completionFeature } from "./features/completion";
 import { formattingFeature } from "./features/formatting";
 import { hoverFeature } from "./features/hover";
+import { signatureHelpFeature } from "./features/signatureHelp";
 import { navigationFeature } from "./features/navigation";
 import { renameFeature } from "./features/rename";
 import { outlineFeature } from "./features/outline";
@@ -22,6 +23,7 @@ const FEATURES: readonly Feature[] = [
   compilerDiagnosticsFeature,
   outlineFeature,
   hoverFeature,
+  signatureHelpFeature,
   navigationFeature,
   renameFeature,
   formattingFeature,

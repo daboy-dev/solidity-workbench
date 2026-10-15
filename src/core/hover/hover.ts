@@ -118,7 +118,7 @@ const MAX_INHERITANCE = 8;
  * A declaration's NatSpec. As solc does, a function without NatSpec takes the documentation
  * of the function it overrides, and `@inheritdoc Base` takes Base's, then adds its own tags.
  */
-async function natSpecOf(ref: MemberDecl, resolver: SymbolResolver, depth: number): Promise<NatSpec | undefined> {
+export async function natSpecOf(ref: MemberDecl, resolver: SymbolResolver, depth = 0): Promise<NatSpec | undefined> {
   const comment = docCommentBefore(ref.file.structure, declarationStart(ref));
   const own = comment ? parseNatSpec(comment, ref.decl.returns?.map((r) => r.name ?? "") ?? []) : undefined;
   if (ref.decl.kind !== "function" || !ref.owner || depth > MAX_INHERITANCE || (own && !own.inheritdoc)) return own;
@@ -189,7 +189,7 @@ function tokenAt(tokens: readonly Token[], offset: number): number {
   return -1;
 }
 
-function typerFor(ctx: CursorContext, env: HoverEnv): Typer {
+export function typerFor(ctx: CursorContext, env: HoverEnv): Typer {
   const file = structureFile(env.path ?? "/untitled.sol", ctx.structure.text, ctx.structure);
   const host = env.host;
   // The file being edited is used as typed, not as saved.
@@ -218,10 +218,16 @@ function typeName(structure: SourceStructure, k: number): HoverSection[] | undef
 
 /** `object.name` for a built-in member of what `object` is. */
 async function builtinMember(typer: Typer, object: ExprType | undefined, name: string, version: string): Promise<HoverSection[] | undefined> {
+  const found = await builtinMemberOf(typer, object, name);
+  return found && [builtinSection(found.builtin, version, found.owner)];
+}
+
+/** The built-in member `name` of what `object` is, with how its owner is written (`abi`, `address`, `type(C)`). */
+export async function builtinMemberOf(typer: Typer, object: ExprType | undefined, name: string): Promise<{ builtin: Builtin; owner: string } | undefined> {
   if (!object) return undefined;
   const pick = (list: readonly Builtin[], owner: string) => {
-    const b = list.find((m) => m.name === name);
-    return b && [builtinSection(b, version, owner)];
+    const builtin = list.find((m) => m.name === name);
+    return builtin && { builtin, owner };
   };
   switch (object.kind) {
     case "namespace":
