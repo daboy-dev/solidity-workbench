@@ -41,13 +41,14 @@ export class ImportContext {
     });
   }
 
-  /** The edit adding the import for a candidate, or undefined if nothing needs to change. */
+  /** The edit adding the import for a candidate (its container, for a member), or undefined if nothing needs to change. */
   importEdit(candidate: ImportCandidate): vscode.TextEdit | undefined {
+    if (candidate.containerInScope) return undefined;
     const { model } = this.project;
     const importer = this.document.uri.fsPath;
     const target = model.resolveImport(candidate.importPath, importer);
     const change = computeImportEdit(this.analysis, {
-      name: candidate.name,
+      name: candidate.importName,
       path: candidate.importPath,
       samePath: (existing) => existing === candidate.importPath || model.resolveImport(existing, importer) === target,
     });
@@ -60,7 +61,7 @@ export class ImportContext {
 }
 
 export function importStatementFor(candidate: ImportCandidate, quote: '"' | "'"): string {
-  return `import {${candidate.name}} from ${quote}${candidate.importPath}${quote};`;
+  return `import {${candidate.importName}} from ${quote}${candidate.importPath}${quote};`;
 }
 
 export function completionKind(kind: SymbolKind): vscode.CompletionItemKind {
@@ -88,6 +89,11 @@ export function completionKind(kind: SymbolKind): vscode.CompletionItemKind {
     case "constant":
       return vscode.CompletionItemKind.Constant;
   }
+}
+
+/** `error`, or `error in IERC721Errors` for a member. */
+export function candidateLabel(candidate: ImportCandidate): string {
+  return candidate.container ? `${kindLabel(candidate.kind)} in ${candidate.container}` : kindLabel(candidate.kind);
 }
 
 export function kindLabel(kind: SymbolKind): string {

@@ -6,7 +6,7 @@ The usual Solidity extensions highlight the syntax, but miss the basics you take
 
 ## Highlights
 
-- **Auto-import**: complete any contract, library, struct, error… of your project or its dependencies, and the import is added with the right remapping.
+- **Auto-import**: complete any contract, library, struct, error… of your project or its dependencies, and the import is added with the right remapping. Errors and events declared inside interfaces are offered qualified (`IERC721Errors.ERC721NonexistentToken`), ready for `vm.expectRevert`.
 
   ```solidity
   contract Vault is Ownab|   // → Ownable, and import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";

@@ -44,6 +44,7 @@ contract Vault is Ownab|
 
 
 - Suggests top-level symbols that are not yet in scope, with the import path shown next to the name.
+- Also errors, events, structs and enums declared inside contracts, interfaces and libraries, inserted qualified with their container imported: `ERC721NonexistentToken` → `IERC721Errors.ERC721NonexistentToken` and `import {IERC721Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";`, ready for `vm.expectRevert(IERC721Errors.ERC721NonexistentToken.selector)`. When the container is already in scope, only the qualification is inserted; members already in scope (inherited ones, for example) are not offered.
 - Adds a named import (`import {X} from "...";`) after the pragma and the last existing import.
 - If the file already imports something from the same file, the new name is merged into it: `import {A, Ownable} from "...";`. Multi-line import lists, quote style and line endings are kept as they are.
 - No suggestions inside comments or strings, nor for names already declared or imported in the file.
@@ -56,7 +57,7 @@ contract Vault is Ownab|
 
 ## Import quick fix
 
-On an *undeclared identifier* diagnostic (solc errors 7576 and 7920, from the built-in compiler diagnostics or from another extension), the light bulb offers `Import X from "..."` for each matching file.
+On an *undeclared identifier* diagnostic (solc errors 7576 and 7920, from the built-in compiler diagnostics or from another extension), the light bulb offers `Import X from "..."` for each matching file. For an error, event, struct or enum declared in a contract, it offers `Import IERC721Errors from "..." and use IERC721Errors.ERC721NonexistentToken`, which also qualifies the name.
 
 ## Add Solidity Import command
 
@@ -137,7 +138,7 @@ Every overload is listed, and the one selected is the first the arguments writte
 - **Find All References** (`Shift+F12`, `Alt+Shift+F12`): every use of the symbol in `src`, `test` and `script`, with named arguments (`S({field: ...})`), NatSpec tags and the declarations it overrides or is overridden by (also in libraries, so the references of an OpenZeppelin function list your uses of it). On an import alias (`Y` in `import {X as Y}`), the uses of the alias. Local variables are found instantly with the tolerant parser; anything else uses solc's AST of the project (see [Rename Symbol](#rename-symbol)). If part of the project does not compile, the status bar says that the results may be incomplete.
 - **Document Highlight**: the occurrences of the symbol under the cursor. Locals are exact; other symbols use the last AST of the project when the file has not changed since (solc is never started for this), and otherwise every occurrence of the same name in code.
 - **Import paths are links**: `Ctrl/Cmd+click` on `"@openzeppelin/contracts/access/Ownable.sol"` opens the file, resolved with the project's remappings.
-- **Go to Symbol in Workspace** (`Ctrl/Cmd+T`) searches the top-level symbols of every indexed project, dependencies included.
+- **Go to Symbol in Workspace** (`Ctrl/Cmd+T`) searches the top-level symbols of every indexed project, dependencies included, and the errors, events, structs and enums of their contracts (shown with their container).
 
 Unsaved changes in open files are taken into account.
 
@@ -180,7 +181,7 @@ Solidity Workbench does not register a grammar, and works with or without other 
 
 ## Known limitations
 
-- Auto-import offers top-level declarations only. Members such as `Library.function` are completed after `Library.` once the library is imported.
+- Auto-import offers top-level declarations, and errors, events, structs and enums of contracts. Functions, constants and state variables of contracts and libraries (`Math.mulDiv`) are completed after `Math.` once the library is imported.
 - Language completion does not suggest Yul inside `assembly` blocks. Calls are typed by their declared return when it is a single value. Expressions with operators (`a + b`, `x ? a : b`) are not typed: as arguments they fit any overload, and nothing is suggested after `(a ? b : c).`.
 - Overloads are resolved with implicit conversions between elementary types, literals and contract types; the value of a number literal is not checked (`f(300)` fits `uint8`), and function types are not compared parameter by parameter.
 - NatSpec is shown as written: references such as `{IERC20-transfer}` are not turned into links. Yul inside `assembly` blocks has no hover and no signature help.
@@ -193,7 +194,7 @@ Solidity Workbench does not register a grammar, and works with or without other 
 - Go to Definition types members of values with the tolerant analysis: values of expressions it cannot type (e.g. functions returning several values) are resolved from solc's AST, which needs the project to compile. Inherited members are searched in declaration order, without solc's exact linearization for diamond hierarchies.
 - Rename and Find All References of anything but local variables need the files involved to compile with an installed solc (a group of files whose solc is not installed blocks symbols it can use). Unit aliases (`import "x.sol" as X;` then `X.Name`) are renamed through `X.Name`, but the alias itself cannot be renamed. Yul identifiers declared inside `assembly` cannot be renamed, and renaming a local used in `assembly` to the name of a Yul builtin is not detected.
 - Document Highlight of non-local symbols uses the AST of the last rename, reference search or definition from solc; until then it highlights every occurrence of the same name.
-- Go to Symbol in Workspace lists top-level symbols only.
+- Go to Symbol in Workspace lists top-level symbols and the errors, events, structs and enums of contracts, not their functions or variables.
 - Syntax and compiler diagnostics may duplicate those of another Solidity extension. Turn off `solidityWorkbench.syntaxDiagnostics.enabled` / `solidityWorkbench.compilerDiagnostics.enabled`, or the equivalent in the other extension.
 - Another Solidity extension with its own completions or auto-import may conflict with this one and show a similar suggestion next to ours. Disable the feature in one of them (`solidityWorkbench.completion.enabled`, `solidityWorkbench.autoImport.enabled`) if this is distracting.
 - Without any Solidity extension, the workbench starts when the workspace contains a `.sol` file or a `foundry.toml`. A loose `.sol` file opened outside any workspace does not activate it.

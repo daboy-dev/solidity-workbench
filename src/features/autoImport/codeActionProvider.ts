@@ -38,19 +38,33 @@ export class AutoImportCodeActionProvider implements vscode.CodeActionProvider {
     const actions: vscode.CodeAction[] = [];
     const seen = new Set<string>();
     for (const diagnostic of diagnostics) {
-      const name = identifierAt(document, diagnostic.range);
-      if (!name) continue;
-      const candidates = ctx.candidates({ name }).slice(0, MAX_ACTIONS_PER_DIAGNOSTIC);
+      const found = identifierAt(document, diagnostic.range);
+      if (!found) continue;
+      // `C.Err` written already: only `C` can be missing.
+      const qualified = found.range.start.character > 0 && document.lineAt(found.range.start.line).text[found.range.start.character - 1] === ".";
+      const candidates = ctx
+        .candidates({ name: found.name })
+        .filter((c) => !(qualified && c.container))
+        .slice(0, MAX_ACTIONS_PER_DIAGNOSTIC);
       candidates.forEach((candidate, i) => {
-        const key = `${candidate.name}\u0000${candidate.importPath}`;
+        const key = `${candidate.insertText}\u0000${candidate.importPath}`;
         if (seen.has(key)) return;
         seen.add(key);
-        const action = new vscode.CodeAction(`Import ${candidate.name} from "${candidate.importPath}"`, vscode.CodeActionKind.QuickFix);
+        const title = !candidate.container
+          ? `Import ${candidate.name} from "${candidate.importPath}"`
+          : candidate.containerInScope
+            ? `Change to ${candidate.insertText}`
+            : `Import ${candidate.container} from "${candidate.importPath}" and use ${candidate.insertText}`;
+        const action = new vscode.CodeAction(title, vscode.CodeActionKind.QuickFix);
         action.diagnostics = [diagnostic];
         action.isPreferred = i === 0 && candidates.length === 1;
+        const edits: vscode.TextEdit[] = [];
+        // A member is used through its container: `ERC721NonexistentToken` → `IERC721Errors.ERC721NonexistentToken`.
+        if (candidate.container) edits.push(vscode.TextEdit.replace(found.range, candidate.insertText));
         const edit = ctx.importEdit(candidate);
+        if (edit) edits.push(edit);
         action.edit = new vscode.WorkspaceEdit();
-        if (edit) action.edit.set(document.uri, [edit]);
+        if (edits.length) action.edit.set(document.uri, edits);
         actions.push(action);
       });
     }
@@ -59,10 +73,9 @@ export class AutoImportCodeActionProvider implements vscode.CodeActionProvider {
 }
 
 /** The identifier a diagnostic points at (diagnostic ranges may be wider, e.g. `Foo.bar`). */
-function identifierAt(document: vscode.TextDocument, range: vscode.Range): string | undefined {
+function identifierAt(document: vscode.TextDocument, range: vscode.Range): { name: string; range: vscode.Range } | undefined {
   const text = document.getText(range);
-  const exact = /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(text) ? text : undefined;
-  if (exact) return exact;
+  if (/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(text)) return { name: text, range };
   const word = document.getWordRangeAtPosition(range.start, IDENT_RE);
-  return word ? document.getText(word) : undefined;
+  return word ? { name: document.getText(word), range: word } : undefined;
 }

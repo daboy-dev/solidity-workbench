@@ -46,6 +46,30 @@ suite("Auto import extras", () => {
     await vscode.commands.executeCommand("workbench.action.closeAllEditors");
   });
 
+  test("quick fix qualifies an error declared in a contract and imports the contract", async () => {
+    const editor = await open("src/FixMember.sol", "pragma solidity ^0.8.20;\n\ncontract FixMember {\n    bytes4 s = OwnableUnauthorizedAccount.selector;\n}\n");
+    const doc = editor.document;
+    const range = rangeOf(doc, "OwnableUnauthorizedAccount");
+    const diag = new vscode.Diagnostic(range, "Undeclared identifier.", vscode.DiagnosticSeverity.Error);
+    diag.code = "7576";
+    diag.source = "solidity";
+    diagnostics.set(doc.uri, [diag]);
+    const title = `Import Ownable from "${OZ_OWNABLE}" and use Ownable.OwnableUnauthorizedAccount`;
+    let actions: vscode.CodeAction[] = [];
+    const deadline = Date.now() + 10_000;
+    while (!actions.some((a) => a.title === title) && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 100));
+      actions = await vscode.commands.executeCommand<vscode.CodeAction[]>("vscode.executeCodeActionProvider", doc.uri, range, vscode.CodeActionKind.QuickFix.value);
+    }
+    const action = actions.find((a) => a.title === title);
+    assert.ok(action, `got: ${actions.map((a) => a.title).join(" | ")}`);
+    assert.ok(await vscode.workspace.applyEdit(action.edit!));
+    assert.equal(
+      doc.getText(),
+      `pragma solidity ^0.8.20;\n\nimport {Ownable} from "${OZ_OWNABLE}";\n\ncontract FixMember {\n    bytes4 s = Ownable.OwnableUnauthorizedAccount.selector;\n}\n`,
+    );
+  });
+
   test("quick fix imports an undeclared identifier reported by solc", async () => {
     const editor = await open("src/Fix.sol", "pragma solidity ^0.8.20;\n\ncontract Fix is Ownable {}\n");
     const doc = editor.document;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractSymbols, extractSymbolsWithRegex } from "../../src/core/solidity/extractSymbols";
+import { extractMembersWithRegex, extractSymbols, extractSymbolsWithRegex } from "../../src/core/solidity/extractSymbols";
 
 const ALL_KINDS = `// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
@@ -41,7 +41,7 @@ describe("extractSymbols", () => {
   it("extracts every kind of top-level declaration with the parser", () => {
     const result = extractSymbols(ALL_KINDS);
     expect(result.method).toBe("parser");
-    expect(result.symbols.map((s) => [s.name, s.kind])).toEqual(EXPECTED);
+    expect(result.symbols.filter((s) => !s.container).map((s) => [s.name, s.kind])).toEqual(EXPECTED);
   });
 
   it("reports 0-based positions", () => {
@@ -50,11 +50,35 @@ describe("extractSymbols", () => {
     expect(thing.character).toBe(0);
   });
 
-  it("does not index nested declarations", () => {
-    const names = extractSymbols(ALL_KINDS).symbols.map((s) => s.name);
-    expect(names).not.toContain("Inner");
-    expect(names).not.toContain("InnerError");
-    expect(names).not.toContain("inner");
+  it("indexes errors, events, structs and enums of contracts with their container, not their functions", () => {
+    const members = extractSymbols(ALL_KINDS).symbols.filter((s) => s.container);
+    expect(members.map((s) => [s.name, s.kind, s.container])).toEqual([
+      ["Inner", "struct", "Base"],
+      ["InnerError", "error", "Base"],
+    ]);
+    expect(members[1]).toMatchObject({ line: 14, character: 4 });
+    expect(extractSymbols(ALL_KINDS).symbols.map((s) => s.name)).not.toContain("inner");
+  });
+
+  it("finds members with the regex scan too, on broken files", () => {
+    const broken = `pragma solidity ^0.8.20;
+interface IERC721Errors {
+    error ERC721NonexistentToken(uint256 tokenId);
+    event Seen(uint256 id);
+}
+contract Broken {
+    struct S { uint a; }
+    function f( {
+        error NotAMember();
+}
+`;
+    const result = extractSymbols(broken);
+    expect(result.method).not.toBe("parser");
+    expect(result.symbols.filter((s) => s.container).map((s) => `${s.container}.${s.name}`)).toEqual(
+      expect.arrayContaining(["IERC721Errors.ERC721NonexistentToken", "IERC721Errors.Seen", "Broken.S"]),
+    );
+    expect(extractMembersWithRegex(broken).map((s) => s.name)).not.toContain("NotAMember");
+    expect(extractSymbolsWithRegex(broken).map((s) => s.name)).not.toContain("ERC721NonexistentToken");
   });
 
   it("completes the parser result with the regex scan on broken files", () => {

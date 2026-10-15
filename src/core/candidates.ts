@@ -30,10 +30,20 @@ export interface ImportCandidate {
   readonly viaRemapping: boolean;
   /** Lower is better; compares alternatives of the same name. */
   readonly rank: number;
+  /** The contract, interface or library declaring a member (`IERC721Errors`). */
+  readonly container?: string;
+  /** What the import brings into scope: the symbol, or the container of a member. */
+  readonly importName: string;
+  /** What is written where it is used: `IERC721Errors.ERC721NonexistentToken` for a member. */
+  readonly insertText: string;
+  /** The container of a member is already in scope: nothing to import, only to qualify. */
+  readonly containerInScope?: boolean;
 }
 
 /**
- * Lists importable symbols for a file, one per (name, real path):
+ * Lists importable symbols for a file, one per (name, real path, container):
+ * - errors, events, structs and enums of contracts are offered qualified, importing their
+ *   container (or not, when it is already in scope);
  * - files in test/ and script/ are hidden from files in src/;
  * - copies reached through symlinks collapse to one entry;
  * - alternatives for the same name are ranked: the project's own files and
@@ -49,12 +59,15 @@ export function findImportCandidates(q: CandidateQuery): ImportCandidate[] {
     if (q.excludeNames?.has(name) || (q.nameFilter && !q.nameFilter(name))) continue;
     for (const symbol of q.index.lookup(name)) {
       const file = symbol.file;
-      if (file.path === q.importerPath || q.excludeFiles?.has(file.realPath)) continue;
+      const { container } = symbol;
+      const fileInScope = q.excludeFiles?.has(file.realPath) ?? false;
+      if (file.path === q.importerPath || (fileInScope && !container)) continue;
       if (!isVisible(importerArea, file.area)) continue;
 
-      const key = `${name}\u0000${file.realPath}`;
+      const key = `${name}\u0000${file.realPath}\u0000${container ?? ""}`;
       const resolved = q.project.importPathFor(file.path, q.importerPath, q.pathStyle);
       const viaRemapping = resolved.remapping !== undefined;
+      const containerInScope = container !== undefined && (fileInScope || (q.excludeNames?.has(container) ?? false));
       const candidate: ImportCandidate = {
         name,
         kind: symbol.kind,
@@ -62,7 +75,12 @@ export function findImportCandidates(q: CandidateQuery): ImportCandidate[] {
         symbol,
         importPath: resolved.path,
         viaRemapping,
-        rank: rankOf(q.project, file, resolved.remapping, resolved.path),
+        // Members come after top-level symbols of the same name.
+        rank: rankOf(q.project, file, resolved.remapping, resolved.path) + (container ? 10_000_000 : 0),
+        importName: container ?? name,
+        insertText: container ? `${container}.${name}` : name,
+        ...(container ? { container } : {}),
+        ...(containerInScope ? { containerInScope } : {}),
       };
       const existing = best.get(key);
       if (!existing || candidate.rank < existing.rank) best.set(key, candidate);

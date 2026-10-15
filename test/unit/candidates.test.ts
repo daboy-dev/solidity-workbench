@@ -52,6 +52,25 @@ describe("findImportCandidates", () => {
     expect(query(VAULT, { name: "Position", excludeFiles: new Set([types.file.realPath]) })).toHaveLength(0);
   });
 
+  it("offers errors, events, structs and enums of contracts qualified, importing their container", () => {
+    const [c] = query(VAULT, { name: "OwnableUnauthorizedAccount" });
+    expect(c).toMatchObject({
+      kind: "error",
+      container: "Ownable",
+      importName: "Ownable",
+      insertText: "Ownable.OwnableUnauthorizedAccount",
+      importPath: "@openzeppelin/contracts/access/Ownable.sol",
+    });
+    expect(c!.containerInScope).toBeUndefined();
+    // The container already in scope: nothing to import, only to qualify.
+    expect(query(VAULT, { name: "OwnableUnauthorizedAccount", excludeNames: new Set(["Ownable"]) })[0]?.containerInScope).toBe(true);
+    expect(query(VAULT, { name: "OwnableUnauthorizedAccount", excludeFiles: new Set([c!.file.realPath]) })[0]?.containerInScope).toBe(true);
+    // The member itself in scope (inherited): not offered.
+    expect(query(VAULT, { name: "OwnableUnauthorizedAccount", excludeNames: new Set(["OwnableUnauthorizedAccount"]) })).toHaveLength(0);
+    // Functions and state variables of contracts are not indexed.
+    expect(query(VAULT, { name: "_owner" })).toHaveLength(0);
+  });
+
   it("returns candidates sorted by name", () => {
     const names = query(VAULT).map((c) => c.name);
     expect(names).toEqual([...names].sort());

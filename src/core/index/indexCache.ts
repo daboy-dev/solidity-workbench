@@ -3,7 +3,7 @@ import * as path from "node:path";
 import type { IndexedFile } from "./symbolIndex";
 
 /** Bump when the shape of cached data or the extraction logic changes. */
-export const CACHE_SCHEMA = 1;
+export const CACHE_SCHEMA = 2;
 
 interface CacheDocument {
   readonly schema: number;

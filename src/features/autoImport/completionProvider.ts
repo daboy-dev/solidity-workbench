@@ -5,7 +5,7 @@ import { cursorContext } from "../../core/completion/cursorContext";
 import { BASELINE_VERSION } from "../../core/completion/languageVersion";
 import { isInCommentOrString } from "../../core/solidity/lexContext";
 import type { WorkbenchCore } from "../../host/workbenchCore";
-import { completionKind, ImportContext, importStatementFor, kindLabel } from "./importContext";
+import { candidateLabel, completionKind, ImportContext, importStatementFor } from "./importContext";
 
 /** Upper bound on items per request. */
 const MAX_ITEMS = 400;
@@ -50,9 +50,12 @@ export class AutoImportCompletionProvider implements vscode.CompletionItemProvid
     for (const c of candidates) {
       if (token.isCancellationRequested) break;
       const item = new vscode.CompletionItem({ label: c.name, description: c.importPath }, completionKind(c.kind));
-      item.detail = `${kindLabel(c.kind)} — auto import`;
-      item.documentation = new vscode.MarkdownString().appendCodeblock(importStatementFor(c, ctx.analysis.preferredQuote), "solidity");
-      item.insertText = c.name;
+      item.detail = c.containerInScope ? `${candidateLabel(c)} — inserted as ${c.insertText}` : `${candidateLabel(c)} — auto import`;
+      const doc = new vscode.MarkdownString();
+      if (c.container) doc.appendMarkdown(`Inserted as \`${c.insertText}\`.`);
+      if (!c.containerInScope) doc.appendCodeblock(importStatementFor(c, ctx.analysis.preferredQuote), "solidity");
+      item.documentation = doc;
+      item.insertText = c.insertText;
       item.filterText = c.name;
       item.range = { inserting, replacing };
       // Ties on the fuzzy score are broken by name, then by our ranking of alternative paths. The

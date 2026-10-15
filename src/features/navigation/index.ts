@@ -207,7 +207,7 @@ class ImportLinkProvider implements vscode.DocumentLinkProvider {
 
 const MAX_WORKSPACE_SYMBOLS = 500;
 
-/** Go to Symbol in Workspace (Ctrl/Cmd+T) over the top-level symbols of every indexed project. */
+/** Go to Symbol in Workspace (Ctrl/Cmd+T) over the indexed symbols (top-level ones, and errors, events, structs and enums of contracts). */
 class WorkspaceSymbolProvider implements vscode.WorkspaceSymbolProvider {
   constructor(private readonly core: WorkbenchCore) {}
 
@@ -222,7 +222,7 @@ class WorkspaceSymbolProvider implements vscode.WorkspaceSymbolProvider {
         if (token.isCancellationRequested) return [];
         if (!matches(name)) continue;
         for (const symbol of project.index.lookup(name)) {
-          const key = `${name}\u0000${symbol.file.realPath}`;
+          const key = `${name}\u0000${symbol.file.realPath}\u0000${symbol.container ?? ""}`;
           if (seen.has(key)) continue;
           seen.add(key);
           found.push(symbol);
@@ -233,7 +233,8 @@ class WorkspaceSymbolProvider implements vscode.WorkspaceSymbolProvider {
     found.sort((a, b) => score(a) - score(b) || a.name.length - b.name.length || a.name.localeCompare(b.name));
     return found.slice(0, MAX_WORKSPACE_SYMBOLS).map((s) => {
       const root = this.core.projects().find((p) => s.file.path.startsWith(p.model.root + path.sep))?.model.root;
-      const container = root ? path.relative(root, s.file.path) : path.basename(s.file.path);
+      const where = root ? path.relative(root, s.file.path) : path.basename(s.file.path);
+      const container = s.container ? `${s.container} — ${where}` : where;
       const location = new vscode.Location(vscode.Uri.file(s.file.path), new vscode.Position(s.line, s.character));
       return new vscode.SymbolInformation(s.name, symbolKindOf(s.kind), container, location);
     });

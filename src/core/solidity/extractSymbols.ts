@@ -1,9 +1,10 @@
 import { parse } from "@solidity-parser/parser";
 import { blankTrivia } from "./lexContext";
-import type { ExtractionResult, SymbolDeclaration, SymbolKind } from "./symbols";
+import { MEMBER_KINDS, type ExtractionResult, type SymbolDeclaration, type SymbolKind } from "./symbols";
 
 /**
- * Extracts the top-level declarations of a Solidity file.
+ * Extracts the top-level declarations of a Solidity file, and the errors, events, structs
+ * and enums declared in its contracts, interfaces and libraries (with their `container`).
  *
  * Uses @solidity-parser/parser in tolerant mode. When parsing throws, or
  * reports errors (which may have made it skip declarations), the result is
@@ -19,17 +20,24 @@ export function extractSymbols(text: string): ExtractionResult {
     for (const node of ast.children) {
       const decl = fromAstNode(node as unknown as AstNode);
       if (decl) parsed.push(decl);
+      const contract = node as unknown as AstNode;
+      if (contract.type !== "ContractDefinition" || !contract.name) continue;
+      for (const sub of contract.subNodes ?? []) {
+        const member = fromAstNode(sub);
+        if (member && MEMBER_KINDS.has(member.kind)) parsed.push({ ...member, container: contract.name });
+      }
     }
   } catch {
     parsed = undefined;
   }
 
   if (parsed && !hadErrors) return { symbols: parsed, method: "parser" };
-  const scanned = extractSymbolsWithRegex(text);
+  const scanned = [...extractSymbolsWithRegex(text), ...extractMembersWithRegex(text)].sort((a, b) => a.line - b.line || a.character - b.character);
   if (!parsed) return { symbols: scanned, method: "regex" };
 
-  const seen = new Set(parsed.map((s) => `${s.kind}:${s.name}`));
-  const merged = [...parsed, ...scanned.filter((s) => !seen.has(`${s.kind}:${s.name}`))];
+  const key = (s: SymbolDeclaration) => `${s.kind}:${s.container ?? ""}:${s.name}`;
+  const seen = new Set(parsed.map(key));
+  const merged = [...parsed, ...scanned.filter((s) => !seen.has(key(s)))];
   merged.sort((a, b) => a.line - b.line || a.character - b.character);
   return { symbols: merged, method: "parser+regex" };
 }
@@ -42,6 +50,7 @@ interface AstNode {
   isFallback?: boolean;
   isReceiveEther?: boolean;
   loc?: { start: { line: number; column: number } };
+  subNodes?: AstNode[];
 }
 
 function fromAstNode(node: AstNode): SymbolDeclaration | undefined {
@@ -119,6 +128,27 @@ export function extractSymbolsWithRegex(text: string): SymbolDeclaration[] {
     nameOffset = kind === "constant" ? statementStart(clean, index) : index;
     const line = lineOf(lineStarts, nameOffset);
     out.push({ name, kind, line, character: nameOffset - lineStarts[line]! });
+  }
+  return out;
+}
+
+const CONTAINER_RE = new RegExp(`\\b(?:abstract\\s+contract|contract|interface|library)\\s+(${IDENT})`, "g");
+const MEMBER_RE = new RegExp(`\\b(struct|enum|error|event)\\s+(${IDENT})`, "g");
+
+/** Regex fallback for contract members: errors, events, structs and enums at brace depth 1 in a contract. */
+export function extractMembersWithRegex(text: string): SymbolDeclaration[] {
+  const clean = blankTrivia(text);
+  const depthAt = braceDepths(clean);
+  const lineStarts = computeLineStarts(clean);
+  const containers = [...clean.matchAll(CONTAINER_RE)].filter((m) => depthAt(m.index ?? 0) === 0).map((m) => ({ at: m.index ?? 0, name: m[1]! }));
+  const out: SymbolDeclaration[] = [];
+  for (const m of clean.matchAll(MEMBER_RE)) {
+    const index = m.index ?? 0;
+    if (depthAt(index) !== 1) continue;
+    const container = containers.filter((c) => c.at < index).at(-1);
+    if (!container) continue;
+    const line = lineOf(lineStarts, index);
+    out.push({ name: m[2]!, kind: m[1] as SymbolKind, line, character: index - lineStarts[line]!, container: container.name });
   }
   return out;
 }

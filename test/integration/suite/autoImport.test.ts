@@ -102,6 +102,33 @@ suite("Auto import", () => {
     );
   });
 
+  test("offers an error declared in a contract, qualified, importing the contract", async () => {
+    const editor = await openWith(
+      "test/MemberImport.t.sol",
+      "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.20;\n\ncontract MemberImportTest {\n    function test() external {\n        bytes4 s = OwnableUnauth\n    }\n}\n",
+    );
+    const doc = editor.document;
+    const position = endOf(doc, "OwnableUnauth");
+    const item = (await completions(doc, position)).find((i) => labelOf(i) === "OwnableUnauthorizedAccount" && descriptionOf(i) === OZ_OWNABLE);
+    assert.ok(item, "OwnableUnauthorizedAccount not suggested");
+    assert.equal(item.detail, "error in Ownable — auto import");
+    await accept(editor, item, position);
+    assert.equal(
+      doc.getText(),
+      `// SPDX-License-Identifier: MIT\npragma solidity ^0.8.20;\n\nimport {Ownable} from "${OZ_OWNABLE}";\n\ncontract MemberImportTest {\n    function test() external {\n        bytes4 s = Ownable.OwnableUnauthorizedAccount\n    }\n}\n`,
+    );
+    // Ownable is now imported: only the qualification is needed.
+    const again = endOf(doc, "bytes4 s = Ownable.OwnableUnauthorizedAccount");
+    await editor.edit((b) => b.insert(again, ";\n        OwnableUnauth"));
+    const second = endOf(doc, "        OwnableUnauth");
+    const qualified = (await vscode.commands.executeCommand<vscode.CompletionList>("vscode.executeCompletionItemProvider", doc.uri, second)).items.find(
+      (i) => labelOf(i) === "OwnableUnauthorizedAccount" && descriptionOf(i) === OZ_OWNABLE,
+    );
+    assert.ok(qualified, "still suggested with Ownable in scope");
+    assert.equal(qualified.insertText, "Ownable.OwnableUnauthorizedAccount");
+    assert.equal(qualified.additionalTextEdits, undefined);
+  });
+
   test("accepting two symbols of the same file produces a single merged import", async () => {
     const editor = await openWith(
       "src/Book.sol",

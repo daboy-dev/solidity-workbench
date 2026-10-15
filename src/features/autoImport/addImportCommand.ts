@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import type { ImportCandidate } from "../../core/candidates";
 import type { SymbolKind } from "../../core/solidity/symbols";
 import type { WorkbenchCore } from "../../host/workbenchCore";
-import { ImportContext, kindLabel } from "./importContext";
+import { candidateLabel, ImportContext } from "./importContext";
 
 export const ADD_IMPORT_COMMAND = "solidityWorkbench.addImport";
 
@@ -63,9 +63,9 @@ async function pick(candidates: readonly ImportCandidate[], initial: string | un
   quickPick.matchOnDescription = true;
   quickPick.items = candidates.map((candidate) => ({
     candidate,
-    label: `$(${iconFor(candidate.kind)}) ${candidate.name}`,
+    label: `$(${iconFor(candidate.kind)}) ${candidate.insertText}`,
     description: candidate.importPath,
-    detail: kindLabel(candidate.kind),
+    detail: candidateLabel(candidate),
   }));
   if (initial) quickPick.value = initial;
 
