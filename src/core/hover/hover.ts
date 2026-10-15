@@ -1,11 +1,12 @@
 import { ABI, BLOCK, CONTRACT_TYPE_INFO, ENUM_TYPE_INFO, EXTERNAL_FUNCTION, GLOBAL_FUNCTIONS, GLOBAL_VALUES, INTERFACE_TYPE_INFO, MSG, TX, UNITS, type Builtin } from "../completion/builtins";
+import { overloadsCalledAt } from "../completion/calls";
 import { cursorContext, type CursorContext } from "../completion/cursorContext";
+import { declarationsNamed, fromSym, memberDecls, type MemberDecl } from "../completion/members";
 import type { ContractNode, Decl, SourceStructure } from "../completion/structure";
 import { structureFile, SymbolResolver, type StructureFile, type StructureHost } from "../completion/symbols";
 import type { Token } from "../completion/tokens";
 import { Typer } from "../completion/typing";
 import { elementaryTypeInfo, isElementaryType, staticMembers, valueMembers, type ExprType } from "../completion/types";
-import { fromSym, memberDecls, withoutOverridden, type MemberDecl } from "../navigation/memberDefinition";
 import { localSymbolAt, type LocalSymbol } from "../references/locals";
 import { declarationAt, declarationStart, signatureOf } from "./declarations";
 import { builtinSection, elementaryTypeSection, unitSection } from "./format";
@@ -72,10 +73,10 @@ export async function hoverAt(structure: SourceStructure, offset: number, env: H
   let sections: readonly HoverSection[] | undefined;
   if (ctx.site.kind === "member") {
     const decls = await memberDecls(typer, ctx.site.receiver, name);
-    sections = decls.length ? await sectionsOf(overloadsAt(structure, k, decls)) : await builtinMember(typer, await typer.typeOf(ctx.site.receiver), name, env.version);
+    sections = decls.length ? await sectionsOf(await overloadsCalledAt(typer, structure, k, decls)) : await builtinMember(typer, await typer.typeOf(ctx.site.receiver), name, env.version);
   } else {
     const decls = await declarationsNamed(typer, name);
-    sections = decls.length ? await sectionsOf(overloadsAt(structure, k, decls)) : builtinName(ctx, name, env.version) ?? typeName(structure, k);
+    sections = decls.length ? await sectionsOf(await overloadsCalledAt(typer, structure, k, decls)) : builtinName(ctx, name, env.version) ?? typeName(structure, k);
   }
   if (sections?.length) return result(sections);
 
@@ -83,36 +84,6 @@ export async function hoverAt(structure: SourceStructure, offset: number, env: H
   const targetFile = target && (await typer.resolver.load(target.path));
   const found = targetFile && declarationAt(targetFile, target.nameStart);
   return result(found ? await sectionsOf([found]) : undefined);
-}
-
-/** What `name` refers to as an expression or type: members of the enclosing contract first, then file level. */
-async function declarationsNamed(typer: Typer, name: string): Promise<MemberDecl[]> {
-  const { resolver, at } = typer;
-  if (at.contract) {
-    const members = (await resolver.members(at.file, at.contract)).filter((s) => s.name === name);
-    if (members.length) return withoutOverridden(members);
-  }
-  return ((await resolver.fileScope(at.file)).get(name) ?? []).map(fromSym);
-}
-
-/** Of several overloads, those taking as many arguments as the call at token `k` passes (all when none or no call). */
-function overloadsAt(structure: SourceStructure, k: number, decls: readonly MemberDecl[]): readonly MemberDecl[] {
-  if (decls.length < 2) return decls;
-  const { tokens, pairs } = structure;
-  if (tokens[k + 1]?.text !== "(") return decls;
-  const close = pairs.close[k + 1]!;
-  const end = close < 0 ? tokens.length : close;
-  let args = 0;
-  let depth = 0;
-  for (let i = k + 2; i < end; i++) {
-    const t = tokens[i]!.text;
-    if (args === 0) args = 1;
-    if (t === "(" || t === "[" || t === "{") depth++;
-    else if (t === ")" || t === "]" || t === "}") depth--;
-    else if (t === "," && depth === 0) args++;
-  }
-  const matching = decls.filter((d) => (d.decl.params?.length ?? 0) - (d.bound ? 1 : 0) === args);
-  return matching.length ? matching : decls;
 }
 
 /** A local variable or parameter, with its `@param` / `@return` text. */

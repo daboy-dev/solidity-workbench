@@ -1,12 +1,6 @@
-import type { ContractNode, Param, UsingDirective } from "./structure";
-import { isContractKind, type StructureFile, type SymbolResolver, type Sym, type TypeScope } from "./symbols";
-import { canonicalType, compatible, isElementaryType } from "./types";
-
-/** A value receiving attached functions: its type as written and, for user-defined types, their declaration. */
-export interface Receiver {
-  readonly type: string;
-  readonly sym?: Sym;
-}
+import { accepts, isBuiltinType, lastName, normalize, type Receiver } from "./calls";
+import type { UsingDirective } from "./structure";
+import type { SymbolResolver, Sym, TypeScope } from "./symbols";
 
 /**
  * Functions attached to `receiver` with `using ... for` as seen from `at`: directives of
@@ -29,7 +23,7 @@ export async function attachedFunctions(resolver: SymbolResolver, at: TypeScope,
     for (const fn of await functionsOf(resolver, scope, directive, name)) {
       if (out.some((s) => s.decl === fn.decl)) continue;
       const first = fn.decl.params?.[0];
-      if (first && (await accepts(resolver, receiver, first, resolver.declScope(fn)))) out.push(fn);
+      if (first && (await accepts(resolver, receiver, first.type, resolver.declScope(fn)))) out.push(fn);
     }
   }
   return out;
@@ -72,45 +66,4 @@ async function targetMatches(resolver: SymbolResolver, scope: TypeScope, target:
   const sym = await resolver.resolvePath(scope, target);
   if (sym && receiver.sym) return sym.decl === receiver.sym.decl;
   return lastName(target) === lastName(receiver.type);
-}
-
-/** Whether a function's first parameter (written in `scope`) takes the receiver: implicit conversions, derived contracts. */
-async function accepts(resolver: SymbolResolver, receiver: Receiver, param: Param, scope: TypeScope): Promise<boolean> {
-  if (isBuiltinType(param.type) || isBuiltinType(receiver.type)) {
-    if (isElementaryType(param.type) && isElementaryType(receiver.type)) return compatible(receiver.type, param.type);
-    return normalize(param.type) === normalize(receiver.type);
-  }
-  const sym = await resolver.resolvePath(scope, param.type);
-  if (!sym || !receiver.sym) return lastName(param.type) === lastName(receiver.type);
-  if (sym.decl === receiver.sym.decl) return true;
-  return isContractKind(sym.decl.kind) && (await derivesFrom(resolver, receiver.sym, sym));
-}
-
-async function derivesFrom(resolver: SymbolResolver, derived: Sym, base: Sym): Promise<boolean> {
-  const node = resolver.contractOf(derived);
-  if (!node) return false;
-  const seen = new Set<string>();
-  const visit = async (c: { file: StructureFile; contract: ContractNode }, depth: number): Promise<boolean> => {
-    const key = `${c.file.path}#${c.contract.start}`;
-    if (seen.has(key) || depth > 16) return false;
-    seen.add(key);
-    for (const b of await resolver.bases(c.file, c.contract)) {
-      if (b.contract.decl === base.decl || (await visit(b, depth + 1))) return true;
-    }
-    return false;
-  };
-  return visit({ file: derived.file, contract: node }, 0);
-}
-
-/** Elementary types, arrays, mappings and function types: compared by how they are written. */
-function isBuiltinType(type: string): boolean {
-  return isElementaryType(type) || type.endsWith("]") || type.startsWith("mapping(") || type.startsWith("function");
-}
-
-function normalize(type: string): string {
-  return canonicalType(type.replace(/\s+(memory|storage|calldata)$/, "")).replace(/\buint\b/g, "uint256").replace(/\bint\b/g, "int256");
-}
-
-function lastName(type: string): string | undefined {
-  return type.split(".").at(-1);
 }

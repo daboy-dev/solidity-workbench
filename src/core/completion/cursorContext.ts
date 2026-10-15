@@ -17,7 +17,7 @@ import type { Token } from "./tokens";
 export type Expr =
   | { readonly kind: "name"; readonly name: string }
   | { readonly kind: "member"; readonly object: Expr; readonly name: string }
-  | { readonly kind: "call"; readonly callee: Expr; readonly args: number }
+  | { readonly kind: "call"; readonly callee: Expr; readonly args: CallArgs }
   | { readonly kind: "index"; readonly object: Expr }
   /** `type(X)`. */
   | { readonly kind: "typeOf"; readonly type: string }
@@ -25,12 +25,22 @@ export type Expr =
   | { readonly kind: "new"; readonly type: string }
   | { readonly kind: "literal"; readonly type: "string" | "number" | "bool" };
 
+/**
+ * The arguments of a call: each one parsed when it is a postfix expression (`a.b(c)[d]`, a
+ * literal), undefined otherwise (`a + b`, half-written). `names` for `f({a: x, b: y})`.
+ */
+export interface CallArgs {
+  readonly values: readonly (Expr | undefined)[];
+  readonly names?: readonly string[];
+}
+
 /** What the value being typed is expected to match, to rank compatible suggestions first. */
 export type Expected =
   | { readonly kind: "type"; readonly type: string; readonly name?: string }
   | { readonly kind: "sameAs"; readonly expr: Expr }
   | { readonly kind: "namedArg"; readonly callee: Expr; readonly name: string }
-  | { readonly kind: "arg"; readonly callee: Expr; readonly index: number }
+  /** `before`: the arguments given before this one. */
+  | { readonly kind: "arg"; readonly callee: Expr; readonly index: number; readonly before: readonly (Expr | undefined)[] }
   | { readonly kind: "return" };
 
 export type Site =
@@ -429,21 +439,59 @@ function expressionIn(structure: SourceStructure, groups: readonly Group[], befo
   }
   if (prev && !NOT_CALLEES.has(prev.text) && (prev.kind === "ident" || prev.text === ")" || prev.text === "]" || prev.text === "}")) {
     const callee = parseBackward(structure, g.open - 1);
-    const index = countTop(structure, g.open + 1, before, ",");
-    return expressionTail(structure, segment, before, callee ? { kind: "arg", callee: callee.expr, index } : undefined);
+    // The arguments before the one at the cursor (`segment` starts after their last comma).
+    const given = segment > g.open + 1 ? segments(structure, g.open + 1, segment - 1).map(([s, e]) => exprIn(structure, s, e)) : [];
+    return expressionTail(structure, segment, before, callee ? { kind: "arg", callee: callee.expr, index: given.length, before: given } : undefined);
   }
   return expressionTail(structure, segment, before, undefined);
 }
 
-function countTop(structure: SourceStructure, from: number, to: number, text: string): number {
+/** The arguments of the call whose `(` is token `open` (closed or not). */
+export function callArgs(structure: SourceStructure, open: number): CallArgs {
   const { tokens, pairs } = structure;
-  let n = 0;
+  const c = pairs.close[open]!;
+  const close = c > open ? Math.min(c, tokens.length) : tokens.length;
+  const brace = pairs.close[open + 1]!;
+  if (tokens[open + 1]?.text === "{" && brace === close - 1) {
+    // Named arguments: `name: value` segments inside the braces.
+    const values: (Expr | undefined)[] = [];
+    const names: string[] = [];
+    for (const [s, e] of segments(structure, open + 2, brace)) {
+      if (tokens[s]?.kind !== "ident" || tokens[s + 1]?.text !== ":") continue;
+      names.push(tokens[s]!.text);
+      values.push(exprIn(structure, s + 2, e));
+    }
+    return { values, names };
+  }
+  return { values: segments(structure, open + 1, close).map(([s, e]) => exprIn(structure, s, e)) };
+}
+
+/** Top-level comma-separated segments of tokens [from, to), as [start, end) pairs; none when empty. */
+function segments(structure: SourceStructure, from: number, to: number): Array<[number, number]> {
+  const { tokens, pairs } = structure;
+  if (from >= to) return [];
+  const out: Array<[number, number]> = [];
+  let start = from;
   for (let k = from; k < to; k++) {
     const t = tokens[k]!.text;
-    if (t === text) n++;
-    if ((t === "(" || t === "[" || t === "{") && pairs.close[k]! < to) k = pairs.close[k]!;
+    if (t === ",") {
+      out.push([start, k]);
+      start = k + 1;
+    } else if (t === "(" || t === "[" || t === "{") {
+      const c = pairs.close[k]!;
+      if (c <= k || c >= to) break;
+      k = c;
+    }
   }
-  return n;
+  out.push([start, to]);
+  return out;
+}
+
+/** The expression spanning exactly tokens [from, to), when it is a postfix expression. */
+function exprIn(structure: SourceStructure, from: number, to: number): Expr | undefined {
+  if (from >= to) return undefined;
+  const parsed = parseBackward(structure, to - 1);
+  return parsed && parsed.first === from ? parsed.expr : undefined;
 }
 
 /** Names already given in the named-argument block opened at `open` (before and after the cursor). */
@@ -510,8 +558,7 @@ export function parseBackward(structure: SourceStructure, k: number): { expr: Ex
     if (c && !NOT_CALLEES.has(c.text) && (c.kind === "ident" || c.text === ")" || c.text === "]")) {
       const callee = parseBackward(structure, calleeEnd);
       if (!callee) return undefined;
-      const args = open + 1 === k ? 0 : countTop(structure, open + 1, k, ",") + 1;
-      return { expr: { kind: "call", callee: callee.expr, args }, first: callee.first };
+      return { expr: { kind: "call", callee: callee.expr, args: callArgs(structure, open) }, first: callee.first };
     }
     // Parenthesized expression.
     const inner = parseBackward(structure, k - 1);

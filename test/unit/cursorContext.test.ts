@@ -9,12 +9,16 @@ describe("cursor context", () => {
     expect(site(inBody("msg.sen|"))).toEqual({ kind: "member", receiver: { kind: "name", name: "msg" } });
     expect(site(inBody("payable(msg.sender).|"))).toEqual({
       kind: "member",
-      receiver: { kind: "call", callee: { kind: "name", name: "payable" }, args: 1 },
+      receiver: {
+        kind: "call",
+        callee: { kind: "name", name: "payable" },
+        args: { values: [{ kind: "member", object: { kind: "name", name: "msg" }, name: "sender" }] },
+      },
     });
     expect(site(inBody("type(uint8).|"))).toEqual({ kind: "member", receiver: { kind: "typeOf", type: "uint8" } });
     expect(site(inBody("a.b[1].c(2, 3).|"))).toMatchObject({
       kind: "member",
-      receiver: { kind: "call", args: 2, callee: { kind: "member", name: "c", object: { kind: "index" } } },
+      receiver: { kind: "call", args: { values: [{ kind: "literal" }, { kind: "literal" }] }, callee: { kind: "member", name: "c", object: { kind: "index" } } },
     });
     expect(site(inBody("x.call{value: 1}(\"\").|"))).toMatchObject({ kind: "member", receiver: { kind: "call" } });
   });
@@ -45,7 +49,11 @@ describe("cursor context", () => {
     expect(site(inBody("emit |"))).toEqual({ kind: "expression", keyword: "emit" });
     expect(site(inBody("revert |"))).toEqual({ kind: "expression", keyword: "revert" });
     expect(site(inBody("x = new |"))).toEqual({ kind: "typeName", purpose: "new" });
-    expect(site(inBody("f(a, |)"))).toEqual({ kind: "expression", expected: { kind: "arg", callee: { kind: "name", name: "f" }, index: 1 } });
+    expect(site(inBody("f(a, |)"))).toEqual({
+      kind: "expression",
+      expected: { kind: "arg", callee: { kind: "name", name: "f" }, index: 1, before: [{ kind: "name", name: "a" }] },
+    });
+    expect(site(inBody("f(g(1), a + b, |)"))).toMatchObject({ expected: { kind: "arg", index: 2, before: [{ kind: "call" }, undefined] } });
     // After a complete operand an operator is expected.
     expect(site(inBody("uint256 x = n |"))).toEqual({ kind: "none" });
   });
@@ -151,5 +159,17 @@ contract Market {
     const params = at("contract C {\n    function f(uint256 a, |\n    function g() external {}\n}");
     expect(params.site).toEqual({ kind: "typeName", purpose: "param" });
     expect(params.contract?.members.map((m) => m.name)).toEqual(["f", "g"]);
+  });
+});
+
+describe("call arguments", () => {
+  it("parses positional and named arguments", () => {
+    expect(site(inBody("f(a, 1, x + y).|"))).toMatchObject({
+      receiver: { kind: "call", args: { values: [{ kind: "name", name: "a" }, { kind: "literal", type: "number" }, undefined] } },
+    });
+    expect(site(inBody('S({a: 1, b: "x"}).|'))).toMatchObject({
+      receiver: { kind: "call", args: { names: ["a", "b"], values: [{ kind: "literal", type: "number" }, { kind: "literal", type: "string" }] } },
+    });
+    expect(site(inBody("f().|"))).toMatchObject({ receiver: { kind: "call", args: { values: [] } } });
   });
 });

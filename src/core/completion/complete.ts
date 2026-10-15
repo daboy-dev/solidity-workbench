@@ -29,6 +29,7 @@ import {
 import { DATA_LOCATIONS, type ContractNode, type Decl, type DeclKind, type Param } from "./structure";
 import { structureFile, SymbolResolver, type StructureFile, type StructureHost, type Sym, type TypeScope } from "./symbols";
 import { canonicalType, compatible, elementaryTypeInfo, ELEMENTARY_TYPES, isReferenceType, staticMembers, valueMembers, type ExprType } from "./types";
+import { calleeCandidates, callParams, paramsAt } from "./calls";
 import { Typer } from "./typing";
 
 export type EntryKind =
@@ -371,23 +372,19 @@ class Session {
 
   // ---- named arguments and expected types ------------------------------------------
 
-  /** What a call or struct constructor takes: struct fields, function, event or error parameters. */
-  private async calleeParams(callee: Expr): Promise<Param[] | undefined> {
+  /** What a call or struct constructor takes, for each overload: struct fields, function, event or error parameters. */
+  private async calleeParams(callee: Expr): Promise<Array<readonly Param[]>> {
+    const candidates = await calleeCandidates(this.typer, callee);
+    if (candidates.length) return candidates.map(callParams);
+    // Members the typer resolves but overloads do not cover (`this.f` of a getter...).
     const type = await this.typer.typeOf(callee);
-    if (type?.kind === "static" && type.sym) {
-      const decl = type.sym.decl;
-      if (decl.kind === "struct") return (decl.members ?? []).map((f) => ({ type: f.type ?? "", name: f.name }));
-      if (decl.kind === "event" || decl.kind === "error") return [...(decl.params ?? [])];
-      return undefined;
-    }
-    // An attached function's first parameter is the value it is called on.
-    if (type?.kind === "function") return (type.sym.decl.params ?? []).slice(type.bound ? 1 : 0);
-    return undefined;
+    if (type?.kind === "static" && type.sym && type.sym.decl.kind === "struct") return [(type.sym.decl.members ?? []).map((f) => ({ type: f.type ?? "", name: f.name }))];
+    if (type?.kind === "function") return [(type.sym.decl.params ?? []).slice(type.bound ? 1 : 0)];
+    return [];
   }
 
   private async namedArgNames(callee: Expr, given: readonly string[]): Promise<void> {
-    const params = await this.calleeParams(callee);
-    if (!params) return;
+    const params = (await this.calleeParams(callee)).flat();
     const rest = this.ctx.structure.text.slice(this.ctx.offset);
     const colonFollows = /^[\w$]*\s*:/.test(rest);
     for (const p of params) {
@@ -407,12 +404,18 @@ class Session {
         return { ...(type?.kind === "value" ? { type: type.type } : {}), ...(name ? { name } : {}) };
       }
       case "namedArg": {
-        const param = (await this.calleeParams(e.callee))?.find((p) => p.name === e.name);
-        return { name: e.name, ...(param?.type ? { type: param.type } : {}) };
+        const types = (await this.calleeParams(e.callee)).map((ps) => ps.find((p) => p.name === e.name)?.type).filter((t) => t !== undefined);
+        const type = agreed(types);
+        return { name: e.name, ...(type ? { type } : {}) };
       }
       case "arg": {
-        const param = (await this.calleeParams(e.callee))?.[e.index];
-        return param ? { type: param.type, ...(param.name ? { name: param.name } : {}) } : undefined;
+        // The overloads the arguments already written can reach; a type or name only when they agree.
+        const candidates = await calleeCandidates(this.typer, e.callee);
+        const params = candidates.length ? await paramsAt(this.typer, candidates, e.before, e.index) : (await this.calleeParams(e.callee)).map((ps) => ps[e.index]).filter((p) => p !== undefined);
+        if (!params.length) return undefined;
+        const type = agreed(params.map((p) => p.type));
+        const name = agreed(params.map((p) => p.name ?? ""));
+        return type || name ? { ...(type ? { type } : {}), ...(name ? { name } : {}) } : undefined;
       }
       case "return": {
         const returns = this.ctx.callable?.returns ?? [];
@@ -623,6 +626,12 @@ function rankFor(entry: CompletionEntry, type: string | undefined, expected: Exp
   if (nameFits && typeFits !== false) return RANK.match;
   if (typeFits) return RANK.compatible;
   return entry.rank;
+}
+
+/** The value when every item has the same one. */
+function agreed(values: readonly string[]): string | undefined {
+  const first = values[0];
+  return first && values.every((v) => v === first) ? first : undefined;
 }
 
 /** `nftAddress_`, `_nftAddress` and `nftAddress` name the same thing. */

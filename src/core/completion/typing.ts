@@ -3,6 +3,8 @@ import type { Expr } from "./cursorContext";
 import type { Decl } from "./structure";
 import { isContractKind, type Sym, type SymbolResolver, type TypeScope } from "./symbols";
 import { builtinTypeOf, indexedType, isElementaryType, valueMembers, type ExprType } from "./types";
+import { calleeCandidates, resolveOverloads } from "./calls";
+import { toSym } from "./members";
 import { attachedFunctions } from "./usingFor";
 
 /**
@@ -18,7 +20,23 @@ export class Typer {
     private readonly locals: readonly Decl[],
   ) {}
 
-  async typeOf(expr: Expr): Promise<ExprType | undefined> {
+  isLocal(name: string): boolean {
+    return this.locals.some((d) => d.name === name);
+  }
+
+  /** Types already computed: resolving overloads types callees and arguments again. */
+  private readonly typed = new WeakMap<Expr, Promise<ExprType | undefined>>();
+
+  typeOf(expr: Expr): Promise<ExprType | undefined> {
+    let type = this.typed.get(expr);
+    if (!type) {
+      type = this.computeType(expr);
+      this.typed.set(expr, type);
+    }
+    return type;
+  }
+
+  private async computeType(expr: Expr): Promise<ExprType | undefined> {
     switch (expr.kind) {
       case "name":
         return this.nameType(expr.name);
@@ -145,7 +163,14 @@ export class Typer {
       }
     }
     const type = await this.typeOf(callee);
-    if (!type) return undefined;
+    // Built-in member functions (`abi.encode`, `bytes.concat`).
+    if (!type) return builtinTypeOf(expr);
+    // A variable of function type: `function() view returns (uint48) clock; clock()`.
+    if (type.kind === "value" && type.type.startsWith("function")) {
+      const returns = /\breturns\s*\(([^(),]*)\)\s*$/.exec(type.type)?.[1]?.trim();
+      const returned = returns?.replace(/\s+(memory|storage|calldata)\b.*$/, "");
+      return returned ? value(returned === "address payable" ? returned : returned.split(" ")[0]!, type.at) : undefined;
+    }
     if (type.kind === "static") {
       const sym = type.sym;
       if (!sym) return builtinTypeOf(expr);
@@ -153,7 +178,11 @@ export class Typer {
       if (isContractKind(sym.decl.kind) || sym.decl.kind === "struct") return value(sym.name, { file: this.at.file, ...(this.at.contract ? { contract: this.at.contract } : {}) });
       return undefined;
     }
-    if (type.kind === "function") return this.returnsOf(type.sym);
+    if (type.kind === "function") {
+      // Overloads: the first one the arguments can reach.
+      const [resolved] = await resolveOverloads(this, await calleeCandidates(this, callee), expr.args);
+      return this.returnsOf(resolved ? toSym(resolved) : type.sym);
+    }
     // Built-in member functions (`abi.encode`, `bytes.concat`).
     return builtinTypeOf(expr);
   }

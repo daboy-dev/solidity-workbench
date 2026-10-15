@@ -3,7 +3,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { subsequenceFilter } from "../../core/candidates";
 import { findDefinitions, importPathRange, type DefinitionTarget } from "../../core/navigation/definitions";
-import { memberDefinition } from "../../core/navigation/memberDefinition";
+import { calledOverloads, memberDefinitions } from "../../core/navigation/memberDefinition";
 import { localSymbolAt } from "../../core/references/locals";
 import { relativeTo } from "../../core/references/projectRename";
 import { findReferences } from "../../core/references/references";
@@ -47,14 +47,23 @@ class DefinitionProvider implements vscode.DefinitionProvider {
       return [toLink({ path: document.uri.fsPath, start, end, nameStart: start, nameEnd: end, text: document.getText() }, word)];
     }
     const project = await this.core.projectFor(document.uri);
-    const member = await memberDefinition(structure, offset, document.uri.fsPath, this.core.structures.host(project));
-    if (member) {
-      const end = member.nameStart + member.name.length;
-      return [toLink({ path: member.path, start: member.nameStart, end, nameStart: member.nameStart, nameEnd: end, text: member.text }, word)];
+    const host = this.core.structures.host(project);
+    const members = await memberDefinitions(structure, offset, document.uri.fsPath, host);
+    if (members.length) {
+      return members.map((m) => {
+        const end = m.nameStart + m.name.length;
+        return toLink({ path: m.path, start: m.nameStart, end, nameStart: m.nameStart, nameEnd: end, text: m.text }, word);
+      });
     }
     const file = await documentSource(this.core, document);
     if (!file) return [];
-    const targets = await findDefinitions(createSourceHost(this.core, project), file, offset);
+    let targets = await findDefinitions(createSourceHost(this.core, project), file, offset);
+    if (targets.length > 1) {
+      // Overloads called by name: those the arguments can reach.
+      const reached = await calledOverloads(structure, offset, document.uri.fsPath, host);
+      const kept = targets.filter((t) => reached.some((r) => r.path === t.path && r.nameStart === t.nameStart));
+      if (kept.length) targets = kept;
+    }
     const origin = document.getWordRangeAtPosition(position, /[A-Za-z_$][\w$]*|[^"'\s]+/);
     if (targets.length || !word || !project || token.isCancellationRequested) return targets.map((t) => toLink(t, origin));
     // Anything else (`x.f()` through `using for`, overloads...): what solc resolved.
