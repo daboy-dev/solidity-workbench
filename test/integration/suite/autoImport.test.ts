@@ -129,6 +129,18 @@ suite("Auto import", () => {
     assert.equal(qualified.additionalTextEdits, undefined);
   });
 
+  test("offers only events after emit and only errors after revert", async () => {
+    const editor = await openWith(
+      "test/RaiseImport.t.sol",
+      "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.20;\n\ncontract RaiseImportTest {\n    function test() external {\n        emit OwnableUnauth\n        revert OwnableUnauth\n        emit Deposit\n    }\n}\n",
+    );
+    const doc = editor.document;
+    const labelsAt = async (needle: string) => (await completions(doc, endOf(doc, needle))).map((i) => `${labelOf(i)}:${i.insertText}`);
+    assert.ok(!(await labelsAt("emit OwnableUnauth")).some((l) => l.startsWith("OwnableUnauthorizedAccount")), "an error after emit");
+    assert.ok((await labelsAt("revert OwnableUnauth")).includes("OwnableUnauthorizedAccount:Ownable.OwnableUnauthorizedAccount"));
+    assert.ok((await labelsAt("emit Deposit")).includes("Deposited:Deposited"));
+  });
+
   test("accepting two symbols of the same file produces a single merged import", async () => {
     const editor = await openWith(
       "src/Book.sol",

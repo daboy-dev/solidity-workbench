@@ -46,7 +46,8 @@ export type Expected =
 export type Site =
   /** Nothing to suggest: comments, strings, imports, assembly, names being declared. */
   | { readonly kind: "none" }
-  | { readonly kind: "member"; readonly receiver: Expr }
+  /** `keyword`: after `emit X.` or `revert X.`, where only events or errors fit. */
+  | { readonly kind: "member"; readonly receiver: Expr; readonly keyword?: "emit" | "revert" }
   /** After a number literal: `1 ether`. */
   | { readonly kind: "unit" }
   | { readonly kind: "fileLevel" }
@@ -111,7 +112,9 @@ export function cursorContext(structure: SourceStructure, offset: number): Curso
   const prev = tokens[before - 1];
   if (prev?.text === ".") {
     const receiver = parseBackward(structure, before - 2);
-    return make(receiver && receiver.expr.kind !== "literal" ? { kind: "member", receiver: receiver.expr } : NONE);
+    if (!receiver || receiver.expr.kind === "literal") return make(NONE);
+    const keyword = tokens[receiver.first - 1]?.text;
+    return make({ kind: "member", receiver: receiver.expr, ...(keyword === "emit" || keyword === "revert" ? { keyword } : {}) });
   }
   if (prev?.kind === "number" && !prev.text.startsWith("0x") && prev.line === lineOf(text, tokens, offset, before)) return make({ kind: "unit" });
 

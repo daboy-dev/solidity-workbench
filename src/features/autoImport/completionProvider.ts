@@ -41,7 +41,10 @@ export class AutoImportCompletionProvider implements vscode.CompletionItemProvid
     const cursor = cursorContext(this.core.structures.structure(document), document.offsetAt(position));
     const inScope = await namesInScope(cursor, { version: BASELINE_VERSION, path: document.uri.fsPath, host: this.core.structures.host(project) });
     if (token.isCancellationRequested) return undefined;
-    const all = ctx.candidates({ nameFilter: subsequenceFilter(prefix) }, inScope);
+    // After `emit` only events fit, after `revert` only errors (members are inserted qualified).
+    const raised = cursor.site.kind === "expression" ? cursor.site.keyword : undefined;
+    const fits = raised ? (c: { kind: string }) => c.kind === (raised === "emit" ? "event" : "error") : () => true;
+    const all = ctx.candidates({ nameFilter: subsequenceFilter(prefix) }, inScope).filter(fits);
     const candidates = selectForCompletion(all, prefix, MAX_ITEMS);
 
     const items: vscode.CompletionItem[] = [];

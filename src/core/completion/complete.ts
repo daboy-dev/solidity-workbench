@@ -28,7 +28,7 @@ import {
   type Keyword,
 } from "./keywords";
 import { DATA_LOCATIONS, type ContractNode, type Decl, type DeclKind, type Param } from "./structure";
-import { structureFile, SymbolResolver, type StructureFile, type StructureHost, type Sym, type TypeScope } from "./symbols";
+import { isContractKind, structureFile, SymbolResolver, type StructureFile, type StructureHost, type Sym, type TypeScope } from "./symbols";
 import { canonicalType, compatible, elementaryTypeInfo, ELEMENTARY_TYPES, isReferenceType, staticMembers, valueMembers, type ExprType } from "./types";
 import { calleeCandidates, callParams, paramsAt } from "./calls";
 import { Typer } from "./typing";
@@ -195,7 +195,8 @@ class Session {
       case "none":
         break;
       case "member":
-        await this.members(site.receiver);
+        if (site.keyword) await this.raisedMembers(site.receiver, site.keyword === "emit" ? "event" : "error");
+        else await this.members(site.receiver);
         break;
       case "unit":
         for (const b of UNITS) out.add({ ...builtinEntry(b, this.env, RANK.keyword, false), kind: "unit" });
@@ -245,7 +246,12 @@ class Session {
       case "expression":
         if (site.keyword) {
           const kind = site.keyword === "emit" ? "event" : "error";
-          for (const sym of await this.scope()) if (sym.decl.kind === kind) out.add(this.symEntry(sym, RANK.member));
+          const scope = await this.scope();
+          const reachable = new Set(scope.filter((sym) => sym.decl.kind === kind).map((sym) => sym.decl));
+          for (const sym of scope) {
+            // The events (errors) in scope, and what declares others, to use them qualified: `emit Market.Listed(...)`.
+            if (sym.decl.kind === kind || (await this.raises(sym, kind, reachable))) out.add(this.symEntry(sym, RANK.member));
+          }
           break;
         }
         await this.values(await this.expected(site.expected));
@@ -426,6 +432,33 @@ class Session {
   }
 
   // ---- members -----------------------------------------------------------------------
+
+  /** After `emit X.` or `revert X.`: the events or errors of X (inherited included), or what a unit alias holds that has some. */
+  private async raisedMembers(receiver: Expr, kind: "event" | "error"): Promise<void> {
+    const type = await this.typer.typeOf(receiver);
+    if (type?.kind !== "static" || !type.sym) return;
+    const sym = type.sym;
+    if (sym.module) {
+      for (const [name, syms] of await this.resolver.fileScope(sym.module)) {
+        const s = syms[0]!;
+        if (s.decl.kind === kind || (await this.raises(s, kind))) this.out.add({ ...this.symEntry(s, RANK.member), label: name });
+      }
+      return;
+    }
+    const node = this.resolver.contractOf(sym);
+    if (!node) return;
+    for (const m of await this.resolver.members(sym.file, node)) if (m.decl.kind === kind) this.out.add(this.symEntry(m, RANK.member));
+  }
+
+  /**
+   * Whether a contract, interface or library declares or inherits an event (error) of `kind`
+   * other than those in `except` (already in scope); a unit alias, whether it holds one.
+   */
+  private async raises(sym: Sym, kind: "event" | "error", except: ReadonlySet<Decl> = new Set()): Promise<boolean> {
+    if (sym.module) return [...(await this.resolver.fileScope(sym.module)).values()].some((syms) => syms.some((s) => s.decl.kind === kind || isContractKind(s.decl.kind)));
+    const node = this.resolver.contractOf(sym);
+    return !!node && (await this.resolver.members(sym.file, node)).some((m) => m.decl.kind === kind && !except.has(m.decl));
+  }
 
   private async members(receiver: Expr): Promise<void> {
     const type = await this.typer.typeOf(receiver);

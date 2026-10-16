@@ -171,6 +171,40 @@ contract C {
     expect((await entries(src("emit |")))[0]?.detail).toBe("Sold(address buyer)");
   });
 
+  it("after emit and revert, also suggests what declares other events and errors, and only those after `X.`", async () => {
+    const files = {
+      "/p/Market.sol": `pragma solidity ^0.8.20;
+contract Base { event Owned(address owner); error NotOwner(); }
+contract Market is Base {
+    event Listed(address seller, uint256 price);
+    error PriceZero();
+    struct Listing { uint256 price; }
+    uint256 public fee;
+    function list() external {}
+}
+library Math { function max(uint256 a, uint256 b) internal pure returns (uint256) {} }
+`,
+      "/p/Market.t.sol": `pragma solidity ^0.8.20;
+import {Market, Math} from "./Market.sol";
+import "./Market.sol" as M;
+contract MarketTest {
+    event Local();
+    function test() external { STMT }
+}
+`,
+    };
+    const at = async (stmt: string) =>
+      (await entriesIn({ ...files, "/p/Market.t.sol": files["/p/Market.t.sol"].replace("STMT", stmt) }, "/p/Market.t.sol")).map((e) => e.label);
+    expect(await at("emit |")).toEqual(["Local", "Market", "M"]);
+    expect(await at("revert |")).toEqual(["Market", "M"]);
+    expect(await at("emit Market.|")).toEqual(["Listed", "Owned"]);
+    expect(await at("revert Market.|")).toEqual(["PriceZero", "NotOwner"]);
+    expect(await at("emit M.|")).toEqual(["Base", "Market"]);
+    expect(await at("emit M.Market.|")).toEqual(["Listed", "Owned"]);
+    // Outside emit and revert, members are as usual.
+    expect(await at("Market.|")).toEqual(expect.arrayContaining(["Listed", "PriceZero", "Listing", "fee", "list"]));
+  });
+
   it("suggests user-defined types where types fit", async () => {
     const files = {
       "/p/Lib.sol": "pragma solidity ^0.8.20;\ninterface IToken {}\nlibrary SafeMath {}\nabstract contract Owned {}\nstruct Point { uint256 x; }\n",
