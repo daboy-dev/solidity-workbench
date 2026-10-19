@@ -9,7 +9,7 @@
 - Auto-import also offers errors, events, structs and enums declared inside contracts, interfaces and libraries, inserted qualified with their container imported (`IERC721Errors.ERC721NonexistentToken`); the undeclared-identifier quick fix does the same, and Go to Symbol in Workspace finds them. The symbol index is rebuilt once.
 - After `emit` and `revert`, completion also suggests the contracts and interfaces that declare other events or errors, and after `emit Market.` / `revert Market.` only their events or errors; auto-import offers only events after `emit` and only errors after `revert`.
 - `selector` is suggested, typed and hovered after errors and events, qualified or not (`vm.expectRevert(Market.PriceZero.selector)`).
-- Misspelled `revert` and `emit` in function bodies (`revertr Unauthorized();`) are reported on the word, with a quick fix, instead of a parser error on the `(`.
+- Misspelled `revert` and `emit` in function bodies (`revertr Unauthorized();`) and misspelled `using` (`uisng SafeERC20 for IERC20;`) are reported on the word, with a quick fix, instead of a parser error further on.
 
 ## 0.5.0 — 2026-10-14
 

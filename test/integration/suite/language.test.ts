@@ -68,6 +68,15 @@ suite("Language basics", () => {
     );
   });
 
+  test("reports a misspelled using on the word", async () => {
+    const editor = await open("src/TypoUsing.sol", "pragma solidity ^0.8.20;\n\nlibrary TypoLib {}\n\ncontract TypoUsing {\n    uisng TypoLib for uint256;\n}\n");
+    const diags = await waitFor(() => (ours(editor.document.uri).length ? ours(editor.document.uri) : undefined));
+    assert.deepStrictEqual(
+      diags.map((d) => [d.message, editor.document.getText(d.range)]),
+      [["Unknown keyword `uisng`. Did you mean `using`?", "uisng"]],
+    );
+  });
+
   test("points at the block left open", async () => {
     const editor = await open("src/Brace.sol", "contract Brace {\n  function f() public {\n    uint a = 1;\n\n  function g() public {}\n}\n");
     const [diag] = await waitFor(() => (ours(editor.document.uri).length ? ours(editor.document.uri) : undefined));

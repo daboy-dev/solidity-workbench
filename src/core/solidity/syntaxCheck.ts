@@ -211,7 +211,8 @@ interface Scope {
  * Finds misspelled declaration keywords (`contact Vault {`, `fucntion f(`,
  * `constuctor(`). Only shapes that can never be valid Solidity are checked:
  * at file level `word Name {` or `word Name (`; inside a contract
- * `word Name (`, `word Name {` or `word (`; in a body `word Name (`
+ * `word Name (`, `word Name {` or `word (`; at either level `word Lib for T`
+ * or `word {f, g} for T` (`uisng SafeERC20 for IERC20;`); in a body `word Name (`
  * (`revertr Unauthorized();`, `emti Transfer(...)`). A user-defined type
  * followed by a name and `;` or `=` (a variable) is never reported.
  */
@@ -267,23 +268,7 @@ export function checkKeywordTypos(clean: string): SyntaxProblem[] {
     if (RESERVED.has(word) || /^u?int\d+$|^bytes\d+$/.test(word)) continue;
 
     const shape = shapeAfter(clean, end);
-    const candidates =
-      scope === "other"
-        ? shape === "name("
-          ? STATEMENT_KEYWORDS
-          : []
-        : scope === "top"
-        ? shape === "name{" || shape === "name("
-          ? TOP_LEVEL_KEYWORDS
-          : shape === "contract"
-            ? ["abstract"]
-            : []
-        : shape === "name(" || shape === "name{"
-          ? MEMBER_KEYWORDS
-          : shape === "("
-            ? ["constructor", "fallback", "receive", "modifier"]
-            : [];
-    const suggestion = closestKeyword(word, candidates);
+    const suggestion = closestKeyword(word, keywordsFor(scope, shape));
     if (suggestion) {
       problems.push({
         start: i + 1 - word.length,
@@ -297,10 +282,21 @@ export function checkKeywordTypos(clean: string): SyntaxProblem[] {
   return problems;
 }
 
-type Shape = "name{" | "name(" | "contract" | "(" | "other";
+type Shape = "name{" | "name(" | "contract" | "(" | "using" | "other";
+
+/** The keywords a misspelled word may be, given where it is and what follows it. */
+function keywordsFor(scope: Scope["kind"], shape: Shape): readonly string[] {
+  if (scope === "other") return shape === "name(" ? STATEMENT_KEYWORDS : [];
+  if (shape === "using") return ["using"];
+  if (scope === "top") return shape === "name{" || shape === "name(" ? TOP_LEVEL_KEYWORDS : shape === "contract" ? ["abstract"] : [];
+  if (shape === "name(" || shape === "name{") return MEMBER_KEYWORDS;
+  return shape === "(" ? ["constructor", "fallback", "receive", "modifier"] : [];
+}
 
 function shapeAfter(clean: string, offset: number): Shape {
   const rest = clean.slice(offset, offset + 200);
+  // `uisng SafeERC20 for IERC20;`, `uisng {add, sub} for Fixed global;`
+  if (/^\s+[A-Za-z_$][\w$]*(?:\s*\.\s*[A-Za-z_$][\w$]*)*\s+for\b/.test(rest) || /^\s*\{[^{}]*\}\s*for\b/.test(rest)) return "using";
   if (/^\s*\(/.test(rest)) return "(";
   const m = /^\s+([A-Za-z_$][\w$]*)\s*([({])?/.exec(rest);
   if (!m) return "other";

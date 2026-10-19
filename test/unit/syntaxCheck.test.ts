@@ -46,6 +46,13 @@ describe("keyword typos", () => {
     expect(problems(body("if (x) revert OnlySeller(); else if (y) emit Paid(1); else z = before(1);"))).toEqual([]);
   });
 
+  it("reports a misspelled using, in contracts and at file level, instead of solc's error on `for`", () => {
+    expect(problems("contract V {\n    uisng SafeERC20 for IERC20;\n}\n")).toEqual([["keyword-typo", "uisng", "Unknown keyword `uisng`. Did you mean `using`?"]]);
+    expect(problems("usign Lib.Math for uint256;\n")[0]?.[1]).toBe("usign");
+    expect(problems("usin {add, sub} for Fixed global;\n")[0]?.[2]).toContain("`using`");
+    expect(problems("contract V {\n    using SafeERC20 for IERC20;\n    using {f} for *;\n}\n")).toEqual([]);
+  });
+
   it("does not flag user-defined types used as variables", () => {
     expect(problems("contract V {\n  Contact contact;\n  Contact public c = Contact(address(0));\n}\n")).toEqual([]);
     expect(problems("Contact constant C = Contact.wrap(1);\n")).toEqual([]);

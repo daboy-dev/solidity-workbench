@@ -75,7 +75,7 @@ On an *undeclared identifier* diagnostic (solc errors 7576 and 7920, from the bu
 
 Syntax errors are reported as you type, without saving, with messages meant for people:
 
-- `contact Vault {}` → *Unknown keyword `contact`. Did you mean `contract`?*, with a quick fix. Also inside bodies, for `revert` and `emit`: `revertr Unauthorized();` → *Did you mean `revert`?*. Misspelled keywords are only reported where the code could never be valid, so a type named `Contact` is never flagged.
+- `contact Vault {}` → *Unknown keyword `contact`. Did you mean `contract`?*, with a quick fix. Also inside bodies, for `revert` and `emit`: `revertr Unauthorized();` → *Did you mean `revert`?*, and for `using`: `uisng SafeERC20 for IERC20;` → *Did you mean `using`?*. Misspelled keywords are only reported where the code could never be valid, so a type named `Contact` is never flagged.
 - A forgotten `}` in the middle of a file → *Missing `}` to close `function deposit` (opened on line 12)*. Indentation is used to find the block that was really left open, not just the last one.
 - Trailing commas in argument and parameter lists, struct literals, enums and imports → *Trailing comma before `}` is not allowed*, with a quick fix to remove it. Empty tuple components such as `(bool ok, ) = ...` are valid and not reported.
 - Extra or mismatched brackets, and the first parser error (*Missing `;`*, *Unexpected `)`*...). Errors that only follow from an earlier one are not repeated.
