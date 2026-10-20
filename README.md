@@ -2,6 +2,8 @@
 
 # Solidity Workbench
 
+> **Note:** pending approval on the Visual Studio Marketplace. Meanwhile, get it from [Open VSX](https://open-vsx.org/extension/daboy-dev/solidity-workbench): download the `.vsix` and run *Extensions: Install from VSIX…* in VS Code.
+
 The usual Solidity extensions highlight the syntax, but miss the basics you take for granted in TypeScript: imports that write themselves, completion that knows your variables and types, errors before you save. Solidity Workbench adds them for Foundry projects, and works on its own or next to other Solidity extensions.
 
 ## Highlights
