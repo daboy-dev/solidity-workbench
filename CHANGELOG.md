@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.6.2 — 2026-10-22
 
 - Quick fix for address literals with an invalid checksum (solc 9429): replaces the literal with the checksummed address.
 
