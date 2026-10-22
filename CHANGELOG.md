@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Quick fix for address literals with an invalid checksum (solc 9429): replaces the literal with the checksummed address.
+
 ## 0.6.1 — 2026-10-20
 
 - Auto-import also offers errors, events, structs and enums declared inside contracts, interfaces and libraries, inserted qualified with their container imported (`IERC721Errors.ERC721NonexistentToken`); the undeclared-identifier quick fix does the same, and Go to Symbol in Workspace finds them. The symbol index is rebuilt once.

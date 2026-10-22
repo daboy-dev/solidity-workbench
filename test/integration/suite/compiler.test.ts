@@ -82,6 +82,18 @@ suite("Compiler diagnostics", function () {
     assert.ok((await codeActions(doc, diag.range)).includes("Change to `returns`"));
   });
 
+  test("replaces an address literal with its checksummed form", async () => {
+    const editor = await open("src/Checksum.sol", `${HEADER}contract Checksum {\n    address router = 0x4752ba5dbc23f44d87826276bf6fd6b1c372ad24;\n}\n`);
+    const doc = editor.document;
+    const diag = await waitFor(() => solc(doc.uri).find((d) => d.code === "9429"), "solc 9429");
+    const actions = await vscode.commands.executeCommand<vscode.CodeAction[]>("vscode.executeCodeActionProvider", doc.uri, diag.range);
+    const fix = actions.find((a) => a.title.startsWith("Use checksummed address"));
+    assert.ok(fix, actions.map((a) => a.title).join(" | "));
+    assert.ok(await vscode.workspace.applyEdit(fix.edit!));
+    assert.match(doc.getText(), /address router = 0x4752ba5DBc23f44D87826276BF6Fd6b1C372aD24;/);
+    await waitFor(() => !solc(doc.uri).some((d) => d.code === "9429") || undefined, "no solc 9429");
+  });
+
   test("leaves syntax errors to the syntax layer", async () => {
     const editor = await open("src/Syntax2.sol", `${HEADER}contact Syntax2 {}\n`);
     const doc = editor.document;

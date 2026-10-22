@@ -1,4 +1,4 @@
-import { dataLocationFix } from "../../src/core/compiler/quickFixes";
+import { checksumAddressFix, dataLocationFix } from "../../src/core/compiler/quickFixes";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -274,6 +274,27 @@ contract Vault is Ownable {
     expect(summary).toContainEqual(["7920", "retruns", "Identifier not found or not unique. Did you mean `returns`?"]);
   });
 
+  it("fixes address literals with an invalid checksum", async () => {
+    const project = await loadProject(FIXTURE, { useForge: false });
+    const entry = path.join(FIXTURE, "src/Vault.sol");
+    const text = `// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+// ñ 🚀
+contract Vault {
+    address router = 0x4752ba5dbc23f44d87826276bf6fd6b1c372ad24;
+}
+`;
+    const outcome = await compile({ project, entry, overlays: new Map([[entry, text]]), installed: [real!] });
+    if (outcome.kind !== "compiled") throw new Error("no solc");
+    const d = outcome.result.diagnostics.get(entry)!.find((x) => x.code === "9429")!;
+    const fix = checksumAddressFix(text, d.start, d.end, d.message)!;
+    expect(fix.address).toBe("0x4752ba5DBc23f44D87826276BF6Fd6b1C372aD24");
+    const fixed = text.slice(0, fix.start) + fix.address + text.slice(fix.end);
+    const again = await compile({ project, entry, overlays: new Map([[entry, fixed]]), installed: [real!] });
+    if (again.kind !== "compiled") throw new Error("no solc");
+    expect(again.result.diagnostics.get(entry)?.filter((x) => x.severity === "error") ?? []).toEqual([]);
+  });
+
   it("finds the missing base constructor arguments", async () => {
     const project = await loadProject(FIXTURE, { useForge: false });
     const entry = path.join(FIXTURE, "src/Vault.sol");
@@ -318,5 +339,23 @@ describe("data location quick fix", () => {
 
   it("ignores other messages", () => {
     expect(dataLocationFix("x", 0, 1, "Something else")).toBeUndefined();
+  });
+});
+
+describe("checksum address quick fix", () => {
+  const MESSAGE =
+    'This looks like an address but has an invalid checksum. Correct checksummed address: "0x4752ba5DBc23f44D87826276BF6Fd6b1C372aD24". If this is not used as an address, please prepend \'00\'.';
+  const SRC = "address a = 0x4752ba5dbc23f44d87826276bf6fd6b1c372ad24;";
+
+  it("replaces the literal with the address solc suggests", () => {
+    const start = SRC.indexOf("0x");
+    expect(checksumAddressFix(SRC, start, start + 42, MESSAGE)).toEqual({ start, end: start + 42, address: "0x4752ba5DBc23f44D87826276BF6Fd6b1C372aD24" });
+    // A wider range still finds the literal.
+    expect(checksumAddressFix(SRC, 0, SRC.length, MESSAGE)?.start).toBe(start);
+  });
+
+  it("ignores other 9429 messages and other literals", () => {
+    expect(checksumAddressFix(SRC, 0, SRC.length, "This looks like an address but is not exactly 40 hex digits. It is 39 hex digits.")).toBeUndefined();
+    expect(checksumAddressFix("address a = 0x0000000000000000000000000000000000000001;", 0, 56, MESSAGE)).toBeUndefined();
   });
 });

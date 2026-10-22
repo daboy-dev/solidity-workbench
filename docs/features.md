@@ -91,6 +91,7 @@ While you type, the file is checked with **solc**, unsaved changes included, a m
 - **Readable ranges:** when solc points at a whole contract or function, only its header is underlined.
 - Unknown identifiers that look like a misspelled keyword get a hint and a quick fix: `retruns` → *Did you mean `returns`?*.
 - A missing data location (`Order order = ...`, `string s` in a parameter) gets quick fixes for the locations solc allows: `calldata` first for external function parameters, `memory` elsewhere.
+- An address literal with an invalid checksum (often copied in lowercase from documentation) gets a quick fix that replaces it with the checksummed address solc suggests: `0x4752ba5dbc…` → `0x4752ba5DBc…`.
 - These errors also drive the *Import X from ...* quick fix, without any other extension.
 - Only analysis is requested from solc (no bytecode), so a check takes tens of milliseconds even with large dependencies. A new keystroke cancels the check in progress.
 

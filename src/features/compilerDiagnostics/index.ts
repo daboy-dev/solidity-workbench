@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { compile, solcLabel, type CompileResult, type CompilerDiagnostic } from "../../core/compiler/compile";
 import { resolveErrorCodes } from "../../core/compiler/compilerSettings";
-import { dataLocationFix } from "../../core/compiler/quickFixes";
+import { checksumAddressFix, dataLocationFix } from "../../core/compiler/quickFixes";
 import { isAbortError } from "../../core/process";
 import { isFeatureEnabled, SECTION } from "../../host/settings";
 import { configuredSolc, installedSolc, invalidateInstalledSolc } from "../../host/solc";
@@ -48,7 +48,7 @@ class CompilerDiagnostics implements vscode.Disposable {
     this.disposables.push(
       this.collection,
       this.status,
-      vscode.languages.registerCodeActionsProvider(SOLIDITY_TEXT_SELECTOR, new DataLocationFixProvider(), {
+      vscode.languages.registerCodeActionsProvider(SOLIDITY_TEXT_SELECTOR, new CompilerFixProvider(), {
         providedCodeActionKinds: [vscode.CodeActionKind.QuickFix],
       }),
       vscode.workspace.onDidOpenTextDocument((doc) => this.schedule(doc, 0)),
@@ -249,8 +249,11 @@ function toDiagnostic(d: CompilerDiagnostic, at: (offset: number) => vscode.Posi
   return diagnostic;
 }
 
-/** "Add `memory`" (and the other allowed locations) for solc's missing data location error 6651. */
-class DataLocationFixProvider implements vscode.CodeActionProvider {
+/**
+ * "Add `memory`" (and the other allowed locations) for solc's missing data location error 6651,
+ * and "Use checksummed address" for address literals with an invalid checksum (9429).
+ */
+class CompilerFixProvider implements vscode.CodeActionProvider {
   provideCodeActions(document: vscode.TextDocument, _range: vscode.Range, context: vscode.CodeActionContext): vscode.CodeAction[] {
     const actions: vscode.CodeAction[] = [];
     for (const diagnostic of context.diagnostics) {
@@ -265,6 +268,17 @@ class DataLocationFixProvider implements vscode.CodeActionProvider {
         action.edit.insert(document.uri, document.positionAt(fix.offset), ` ${location}`);
         actions.push(action);
       });
+    }
+    for (const diagnostic of context.diagnostics) {
+      if (diagnostic.source !== COMPILER_SOURCE || diagnostic.code !== "9429") continue;
+      const fix = checksumAddressFix(document.getText(), document.offsetAt(diagnostic.range.start), document.offsetAt(diagnostic.range.end), diagnostic.message);
+      if (!fix) continue;
+      const action = new vscode.CodeAction(`Use checksummed address \`${fix.address}\``, vscode.CodeActionKind.QuickFix);
+      action.diagnostics = [diagnostic];
+      action.isPreferred = true;
+      action.edit = new vscode.WorkspaceEdit();
+      action.edit.replace(document.uri, new vscode.Range(document.positionAt(fix.start), document.positionAt(fix.end)), fix.address);
+      actions.push(action);
     }
     return actions;
   }

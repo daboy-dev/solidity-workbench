@@ -29,3 +29,27 @@ export function dataLocationFix(text: string, start: number, end: number, messag
   const offset = start + typeEnd;
   return { offset, locations: [preferred, ...allowed.filter((l) => l !== preferred)] };
 }
+
+export interface ChecksumFix {
+  readonly start: number;
+  readonly end: number;
+  /** The literal with the EIP-55 checksum solc suggests. */
+  readonly address: string;
+}
+
+/**
+ * Fix for solc 9429 ("This looks like an address but has an invalid checksum. Correct
+ * checksummed address: "0x…"."), reported on the literal: replace it with the address
+ * solc suggests, if it is the same address. Other 9429 messages (wrong number of hex
+ * digits) have no fix.
+ */
+export function checksumAddressFix(text: string, start: number, end: number, message: string): ChecksumFix | undefined {
+  const address = /Correct checksummed address: "(0x[0-9a-fA-F]{40})"/.exec(message)?.[1];
+  if (!address) return undefined;
+  // The range is the literal; search it in case solc widens it.
+  const re = /0x[0-9a-fA-F]{40}(?![\w$])/g;
+  for (let m; (m = re.exec(text.slice(start, end))); ) {
+    if (m[0].toLowerCase() === address.toLowerCase()) return { start: start + m.index, end: start + m.index + m[0].length, address };
+  }
+  return undefined;
+}

@@ -31,7 +31,7 @@ The usual Solidity extensions highlight the syntax, but miss the basics you take
 
   It follows the file's solc version: `block.prevrandao` from 0.8.18, `blobhash` from 0.8.24, `transfer` and `send` marked deprecated from 0.8.31.
 
-- **Errors while you type, without saving**: solc's errors and warnings filtered exactly like `forge build`, and readable syntax errors (*Missing `}` to close `function deposit`*, *Did you mean `contract`?*), with quick fixes for misspelled keywords, missing imports, missing data locations and trailing commas.
+- **Errors while you type, without saving**: solc's errors and warnings filtered exactly like `forge build`, and readable syntax errors (*Missing `}` to close `function deposit`*, *Did you mean `contract`?*), with quick fixes for misspelled keywords, missing imports, missing data locations, address checksums and trailing commas.
 
 - **Rename and Find All References across the project**: `F2` on a state variable, function, event, error, struct field, enum value or contract updates every file in `src`, `test` and `script`, overrides and interfaces included. Local variables are renamed instantly, even in half-written code. Every rename is checked by compiling the result, and a contract renamed in `Vault.sol` takes its file and import paths along:
 
